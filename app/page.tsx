@@ -71,17 +71,18 @@ export default function Home() {
     let active = true;
     let timer: ReturnType<typeof setTimeout>;
     const refresh = async () => {
+      if (document.hidden) { timer = setTimeout(refresh, 60000); return; }
       const sequence = ++readSequence.current;
       const [state, totals] = await Promise.all([readContract("get_intent", [intentId]), readContract("get_stats")]);
       if (!active) return;
-      if (sequence !== readSequence.current) { timer = setTimeout(refresh, 5000); return; }
+      if (sequence !== readSequence.current) { timer = setTimeout(refresh, 60000); return; }
       const value = state.success ? unwrap<IntentState>(state.data) : null;
       if (value && typeof value.exists === "boolean") {
         setIntent(value); setLoadedId(intentId); setReadError("");
         setLastRead(new Date().toLocaleTimeString());
       } else { setLoadedId(""); setReadError(state.error || "Unable to read intent state. Retrying…"); }
       if (totals.success) { const value = unwrap<Stats>(totals.data); if (value) setStats(value); }
-      timer = setTimeout(refresh, 5000);
+      timer = setTimeout(refresh, 60000);
     };
     void refresh();
     return () => { active = false; ++readSequence.current; clearTimeout(timer); };
@@ -260,7 +261,7 @@ export default function Home() {
           </div>
           <aside className={`verdict ${authorized ? "allow" : blocked ? "deny" : "idle"}`}>
             <div className="card-label">AUTHORITATIVE READBACK</div>
-            <p>Intent: {intentId}<br/>{readError || (loadedId === intentId ? `Last read: ${lastRead} · refreshes every 5s` : "Reading selected intent…")}</p>
+            <p>Intent: {intentId}<br/>{readError || (loadedId === intentId ? `Last read: ${lastRead} · refreshes every 60s; use Sync state after a transaction` : "Reading selected intent…")}</p>
             <div className="verdict-mark">{authorized ? <Check/> : blocked ? <X/> : <ShieldAlert/>}</div>
             <span className="verdict-kicker">GATE AUTHORIZATION STATE</span>
             <h3>{status}</h3>
