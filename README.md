@@ -1,0 +1,114 @@
+# IncidentGate
+
+**A GenLayer-powered semantic circuit breaker for autonomous treasuries and transaction agents, with two pre-audited live-source adapters and a contract-enforced operation catalog.**
+
+V8 broadens the product without weakening its boundary: Coinbase and Kraken remain the only fixed authorities, while 22 reviewed operation profiles cover exchange-internal activity and five network scopes. The contract—not the frontend—rejects every unlisted `(authority, scope, asset, action)` tuple. V8 also normalizes Statuspage timestamps carrying either `Z` or an explicit UTC offset before lifecycle comparison.
+
+IncidentGate evaluates whether current authoritative incident disclosures materially affect one exact proposed operation. GenLayer validators independently retrieve the registered source and agree on the bounded semantic relation. Deterministic contract logic alone decides whether to issue a short-lived, single-use execution capability.
+
+## Why GenLayer
+
+Status APIs expose structured lifecycle fields but important scope remains natural language. A disclosure such as “sends and receives are delayed; buys, sells, and fiat withdrawals/deposits are unaffected” cannot safely gate every operation with a single component-status boolean. IncidentGate binds an operation across product, network, asset, action, destination, and amount, then asks only whether a current disclosure materially applies.
+
+The model never returns `ALLOW` or `BLOCK`:
+
+```text
+authoritative incident feed
+        ↓ independent validator retrieval
+AFFECTS_OPERATION | DOES_NOT_AFFECT_OPERATION | UNCERTAIN
+        ↓ deterministic policy gates
+BLOCK | short-lived single-use authorization
+        ↓ exact digest + nonce + expiry
+TARGET APPLIED | REVERT
+        ↓ finalized target confirmation
+EXECUTED | CONFIRMATION PENDING
+```
+
+## Production source profile
+
+The first profile uses Coinbase Status because it exposes a public Statuspage JSON feed with stable incident IDs, lifecycle timestamps, affected components, and operation-specific prose. The second audited profile uses Kraken's official Statuspage API to prove multi-authority extensibility with an independently bound page identity.
+
+### Redirect limitation
+
+The pinned GenVM response API exposes HTTP status, headers, and body, but not the final URL or redirect history. IncidentGate therefore does not claim redirect-destination verification. It accepts only hardcoded canonical HTTPS endpoints, requires a 2xx response, and verifies the exact Statuspage page identity and schema. A raw 3xx response fails closed; a redirect followed internally by the runtime cannot currently be inspected.
+
+- Origin: `https://status.coinbase.com`
+- Feed: `https://status.coinbase.com/api/v2/incidents/unresolved.json`
+- Required page ID: `kr0djjh0jyy9`
+- Required page name: `Coinbase`
+
+Kraken adapter:
+
+- Origin: `https://status.kraken.com`
+- Feed: `https://status.kraken.com/api/v2/incidents/unresolved.json`
+- Required page ID: `lfz25gyhcpjf`
+- Required page name: `Kraken`
+
+The URL is not supplied per intent. It is exactly registered by the contract. The agent supplies only the operation it wants authorized.
+
+## V8 reviewed operation catalog
+
+`PLATFORM_INTERNAL` means an exchange-side BUY, SELL, or TRADE. It is deliberately not labeled as a blockchain. DEPOSIT and WITHDRAW profiles bind an actual network.
+
+| Authority | Scope | Assets | Actions |
+| --- | --- | --- | --- |
+| Coinbase | `PLATFORM_INTERNAL` | USDC, BTC, ETH | BUY, SELL |
+| Coinbase | Ethereum | USDC | DEPOSIT, WITHDRAW |
+| Coinbase | Base | USDC | DEPOSIT, WITHDRAW |
+| Kraken | `PLATFORM_INTERNAL` | BTC, ETH, USDC, GLMR | TRADE |
+| Kraken | Bitcoin | BTC | DEPOSIT, WITHDRAW |
+| Kraken | Ethereum | USDC | DEPOSIT, WITHDRAW |
+| Kraken | Solana | SOL | DEPOSIT, WITHDRAW |
+| Kraken | Moonbeam | GLMR | DEPOSIT, WITHDRAW |
+
+This catalog is a reviewed policy surface, not a claim that every listed operation is continuously supported by an exchange. Adding an asset, action, network, or new authority requires a new audited contract release.
+
+The `IncidentGate` constructor pins one `GuardedTarget`, and that target can bind back to the Gate exactly once. The production frontend pins the same pair through environment configuration; visitors and policy owners cannot substitute a target. Because the current GenVM API exposes no contract-code hash primitive, reviewers must still verify that the two published deployment addresses correspond to the reviewed sources.
+
+### Epistemic boundary
+
+An empty, successfully authenticated unresolved-incident feed means only that no blocking disclosure was found under this registered authority at retrieval time. It does **not** prove Coinbase or any protocol is safe, exploit-free, solvent, continuously available, or suitable for investment.
+
+## Lifecycle
+
+1. A policy owner registers a separate treasury agent, exact authority identity, destination, action, asset, amount limit, and authorization TTL. The owner becomes the assessor and cannot also be the agent.
+2. The registered agent creates an exact intent with a unique nonce.
+3. The agent locks a bounded assessment ticket. Only the policy owner/assessor can invoke its assessment.
+4. Validators independently retrieve and structurally validate the live feed, then GenLayer adjudicates applicability.
+5. Any relevant or uncertain disclosure blocks. Source/schema/identity failure also blocks.
+6. Only `DOES_NOT_AFFECT_OPERATION` plus every deterministic prerequisite creates an authorization.
+7. The same agent calls `IncidentGate.execute_intent`. Gate rechecks caller, expiry, policy revision and authorization digest, marks the intent `EXECUTION_QUEUED`, then emits the exact operation to its constructor-pinned target after finalization.
+8. `GuardedTarget` accepts messages only from its one-time-bound Gate. It validates the target revision, applies the operation once, stores an immutable receipt, and emits confirmation to Gate. Duplicate delivery is idempotent; `retry_execution` and `retry_confirmation` recover delayed messages without repeating the target operation. Every pause/unpause increments a target revision, invalidating older queued operations.
+
+The Control Room includes policy registration, so a reviewer can complete the lifecycle after the one-time target/Gate binding. Register with the owner wallet and a distinct treasury-agent address; switch to the agent for create/schedule/execute and back to the owner for assessment. `EXECUTION_QUEUED` is an honest eventual-delivery state, not a claim that both contracts changed atomically.
+
+### Consensus retry limitation
+
+A `MAJORITY_DISAGREE` transaction does not commit contract state, so an intelligent contract cannot persistently count that failed attempt. V5 prevents the beneficiary agent from invoking or retrying assessment and bounds assessment to a one-time ticket window. A malicious policy owner/assessor could still resubmit a non-finalized assessment inside that window; absolute prevention requires protocol-level attempt receipts or an external neutral assessor. No stronger claim is made.
+
+## Local verification
+
+```bash
+python -m pytest -q
+npm install
+npm run lint
+npm run build
+npm run dev
+```
+
+V8 deployment order is deliberate: deploy `GuardedTarget` with no arguments; deploy `IncidentGate` with the target address; then call `GuardedTarget.bind_incident_gate(gate)` once from the target owner. Never bind an unverified address because the binding cannot be replaced. A GuardedTarget already bound to V7 cannot be rebound; V8 therefore requires a fresh target/Gate pair.
+
+## Environment
+
+Copy `.env.example` to `.env.local` after deployment. The app supports `localnet`, `studionet`, and `testnetBradbury`. Never label Studio-dev chain `61997` as Studionet (`61999`); deployment records must state the exact network used.
+
+## Repository evidence
+
+- [V8 end-to-end evidence — judge quick path](docs/E2E_EVIDENCE.md)
+- [Source manifest](docs/SOURCE_MANIFEST.md)
+- [Threat model](docs/THREAT_MODEL.md)
+- [Verification record](docs/VERIFICATION.md)
+- [Pre-submission red-team checklist](docs/RED_TEAM_CHECKLIST.md)
+- [Contract source](contracts/incident_gate.py)
+
+Synthetic inputs in tests are regression fixtures only. They are not presented as authoritative live evidence. The linked V8 ledger records the user-deployed release and finalized StudioNet transactions separately from local-only adversarial coverage.
