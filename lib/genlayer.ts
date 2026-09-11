@@ -90,8 +90,8 @@ export async function writeContract(functionName: string, args: unknown[] = [], 
 
 export function unwrap<T>(value: unknown): T | null {
   try {
-    if (typeof value === "string") return JSON.parse(value) as T;
-    if (value && typeof value === "object" && "result" in value) return unwrap<T>((value as { result: unknown }).result);
+    if (typeof value === "string") return unwrap<T>(JSON.parse(value));
+    if (value && typeof value === "object" && Object.keys(value).length === 1 && "result" in value) return unwrap<T>((value as { result: unknown }).result);
     return value as T;
   } catch { return null; }
 }

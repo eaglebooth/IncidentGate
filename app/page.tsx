@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import { ArrowDown, ArrowRight, Check, ExternalLink, Fingerprint, LockKeyhole, Radio, RefreshCw, ShieldAlert, Sparkles, Wallet, X } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { connectedWallet, connectWallet, contractAddress, disconnectWallet, explorerAddress, explorerTargetAddress, explorerTx, isConfigured, networkName, readContract, targetAddress, unwrap, watchWallet, writeContract } from "@/lib/genlayer";
 
 type IntentState = { exists: boolean; policy_id?: string; assessor?: string; asset?: string; action?: string; chain_ref?: string; amount?: string; status?: string; verdict?: string; target_contract?: string; function_selector?: string; calldata_digest?: string; call_value?: string; operation_digest?: string; authorization_digest?: string; evidence_digest?: string; assessment_not_before?: string; assessment_deadline?: string; expires_at?: string; consumed?: boolean; reason?: string };
@@ -62,6 +62,30 @@ export default function Home() {
   const [deploymentReady, setDeploymentReady] = useState(false);
   const [notice, setNotice] = useState("Ready. Connect the registered treasury agent wallet.");
   const [txHash, setTxHash] = useState("");
+  const [loadedId, setLoadedId] = useState("");
+  const [readError, setReadError] = useState("");
+  const [lastRead, setLastRead] = useState("");
+  const readSequence = useRef(0);
+
+  useEffect(() => {
+    let active = true;
+    let timer: ReturnType<typeof setTimeout>;
+    const refresh = async () => {
+      const sequence = ++readSequence.current;
+      const [state, totals] = await Promise.all([readContract("get_intent", [intentId]), readContract("get_stats")]);
+      if (!active) return;
+      if (sequence !== readSequence.current) { timer = setTimeout(refresh, 5000); return; }
+      const value = state.success ? unwrap<IntentState>(state.data) : null;
+      if (value && typeof value.exists === "boolean") {
+        setIntent(value); setLoadedId(intentId); setReadError("");
+        setLastRead(new Date().toLocaleTimeString());
+      } else { setLoadedId(""); setReadError(state.error || "Unable to read intent state. Retrying…"); }
+      if (totals.success) { const value = unwrap<Stats>(totals.data); if (value) setStats(value); }
+      timer = setTimeout(refresh, 5000);
+    };
+    void refresh();
+    return () => { active = false; ++readSequence.current; clearTimeout(timer); };
+  }, [intentId]);
 
   const verifyDeployment = useCallback(async () => {
     if (!isConfigured()) return false;
@@ -99,8 +123,11 @@ export default function Home() {
     setBusy("sync");
     const compatible = await verifyDeployment();
     if (!compatible) { setNotice("V8 deployment pending — configured address does not match the ISO-offset-compatible handshake."); setBusy(""); return; }
+    const sequence = ++readSequence.current;
     const [stateResult, statsResult] = await Promise.all([readContract("get_intent", [intentId]), readContract("get_stats")]);
-    if (stateResult.success) setIntent(unwrap<IntentState>(stateResult.data));
+    if (sequence !== readSequence.current) { setBusy(""); return; }
+    if (stateResult.success) { setIntent(unwrap<IntentState>(stateResult.data)); setLoadedId(intentId); setReadError(""); setLastRead(new Date().toLocaleTimeString()); }
+    else { setLoadedId(""); setReadError(stateResult.error || "Readback failed."); }
     if (statsResult.success) setStats(unwrap<Stats>(statsResult.data) || stats);
     setNotice(stateResult.success ? "Authoritative state synchronized." : stateResult.error || "Readback failed.");
     setBusy("");
@@ -131,7 +158,7 @@ export default function Home() {
     if (result.success) await sync();
   }
 
-  const status = intent?.exists ? intent.status || "UNKNOWN" : "NO INTENT";
+  const status = loadedId !== intentId ? "SYNCING" : intent?.exists ? intent.status || "UNKNOWN" : "NO INTENT";
   const authorized = status === "AUTHORIZED";
   const queued = status === "EXECUTION_QUEUED";
   const blocked = status.startsWith("BLOCKED_") || status === "SOURCE_FAILURE" || status === "EXPIRED";
@@ -218,7 +245,7 @@ export default function Home() {
             <button className="execute setup" disabled={!!busy || !wallet || !agent || !destination || !/^0x[0-9a-fA-F]{40}$/.test(targetContract) || agent.toLowerCase() === wallet.toLowerCase()} onClick={()=>transact("Register policy", "register_policy", [policyId, agent, adapterId, adapter.source, adapter.pageId, adapter.name, destination, route.chain, route.asset, route.action, BigInt("1000000000000"), 300])}>0. Owner registers policy <Fingerprint size={17}/></button>
             <div className="card-label intent-label">TRANSACTION INTENT</div>
             <div className="field-grid">
-              <label>Intent ID<input value={intentId} onChange={e=>setIntentId(e.target.value)}/></label>
+              <label>Intent ID<input value={intentId} disabled={!!busy} onChange={e=>{setIntentId(e.target.value); setIntent(null); setLoadedId("");}}/></label>
               <label>Policy ID<input value={policyId} onChange={e=>setPolicyId(e.target.value)}/></label>
               <label>Amount / {route.asset} units<input inputMode="numeric" value={amount} onChange={e=>setAmount(e.target.value)}/></label>
               <label>Replay nonce<input value={nonce} onChange={e=>setNonce(e.target.value)}/></label>
@@ -233,6 +260,7 @@ export default function Home() {
           </div>
           <aside className={`verdict ${authorized ? "allow" : blocked ? "deny" : "idle"}`}>
             <div className="card-label">AUTHORITATIVE READBACK</div>
+            <p>Intent: {intentId}<br/>{readError || (loadedId === intentId ? `Last read: ${lastRead} · refreshes every 5s` : "Reading selected intent…")}</p>
             <div className="verdict-mark">{authorized ? <Check/> : blocked ? <X/> : <ShieldAlert/>}</div>
             <span className="verdict-kicker">GATE AUTHORIZATION STATE</span>
             <h3>{status}</h3>
