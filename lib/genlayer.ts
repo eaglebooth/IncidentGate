@@ -12,7 +12,6 @@ type EthereumProvider = {
 declare global { interface Window { ethereum?: EthereumProvider } }
 const network = (process.env.NEXT_PUBLIC_NETWORK as NetworkName) || "studionet";
 const chains = { localnet, studionet, testnetBradbury };
-const reader = createClient({ chain: chains[network] ?? studionet });
 type RuntimeClient = {
   connect?: (name: NetworkName) => Promise<unknown>;
   readContract: (args: { address: string; functionName: string; args: unknown[] }) => Promise<unknown>;
@@ -66,7 +65,12 @@ export function watchWallet(listener: (address: string) => void): () => void {
 
 export async function readContract(functionName: string, args: unknown[] = []): Promise<ChainResult> {
   if (!isConfigured()) return { success: false, error: "Contract deployment is not configured yet." };
-  try { return { success: true, data: await (reader as unknown as RuntimeClient).readContract({ address: contractAddress(), functionName, args }) }; }
+  try {
+    const query = new URLSearchParams({ method: functionName });
+    if (args.length) query.set("id", String(args[0]));
+    const response = await fetch(`/api/state?${query}`, { cache: "no-store", signal: AbortSignal.timeout(20000) });
+    return await response.json() as ChainResult;
+  }
   catch (error) { return { success: false, error: error instanceof Error ? error.message : "Contract read failed." }; }
 }
 
