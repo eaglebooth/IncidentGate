@@ -6,6 +6,9 @@ V8 broadens the product without weakening its boundary: Coinbase and Kraken rema
 
 IncidentGate evaluates whether current authoritative incident disclosures materially affect one exact proposed operation. GenLayer validators independently retrieve the registered source and agree on the bounded semantic relation. Deterministic contract logic alone decides whether to issue a short-lived, single-use execution capability.
 
+**Live application:** [incidentgate.vercel.app](https://incidentgate.vercel.app)  
+**V8 evidence:** [judge-facing E2E ledger](docs/E2E_EVIDENCE.md)
+
 ## Why GenLayer
 
 Status APIs expose structured lifecycle fields but important scope remains natural language. A disclosure such as “sends and receives are delayed; buys, sells, and fiat withdrawals/deposits are unaffected” cannot safely gate every operation with a single component-status boolean. IncidentGate binds an operation across product, network, asset, action, destination, and amount, then asks only whether a current disclosure materially applies.

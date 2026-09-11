@@ -7,6 +7,7 @@ This page is the shortest reproducible path through the user-deployed V8 release
 | Item | Value |
 |---|---|
 | Network | GenLayer StudioNet (chain ID `61999`) |
+| Live application | [incidentgate.vercel.app](https://incidentgate.vercel.app) |
 | IncidentGate V8 | [`0x11086a66FeDBEdC879C95701d0eF33C3F18Eb277`](https://explorer-studio.genlayer.com/address/0x11086a66FeDBEdC879C95701d0eF33C3F18Eb277) |
 | GuardedTarget | [`0x5Bb7E1b9f476404bcbCBC290e30CF7Dda73bBd43`](https://explorer-studio.genlayer.com/address/0x5Bb7E1b9f476404bcbCBC290e30CF7Dda73bBd43) |
 | One-time binding | [`0x730659…055bbc`](https://explorer-studio.genlayer.com/tx/0x730659b2f916d3b67ecde8cf139c5c08fb29d92704667ba24dc7713d9e055bbc) |
