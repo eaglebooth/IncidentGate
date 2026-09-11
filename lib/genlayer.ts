@@ -4,7 +4,12 @@ import { TransactionStatus } from "genlayer-js/types";
 import { finalizedFailure } from "./finality";
 
 type NetworkName = "localnet" | "studionet" | "testnetBradbury";
-declare global { interface Window { ethereum?: { request: (args: { method: string; params?: unknown[] }) => Promise<unknown> } } }
+type EthereumProvider = {
+  request: (args: { method: string; params?: unknown[] }) => Promise<unknown>;
+  on?: (event: "accountsChanged", listener: (accounts: string[]) => void) => void;
+  removeListener?: (event: "accountsChanged", listener: (accounts: string[]) => void) => void;
+};
+declare global { interface Window { ethereum?: EthereumProvider } }
 const network = (process.env.NEXT_PUBLIC_NETWORK as NetworkName) || "studionet";
 const chains = { localnet, studionet, testnetBradbury };
 const reader = createClient({ chain: chains[network] ?? studionet });
@@ -31,6 +36,32 @@ export async function connectWallet(): Promise<ChainResult> {
     const accounts = await window.ethereum.request({ method: "eth_requestAccounts" }) as string[];
     return accounts[0] ? { success: true, data: accounts[0] } : { success: false, error: "No account selected." };
   } catch (error) { return { success: false, error: error instanceof Error ? error.message : "Wallet connection failed." }; }
+}
+
+export async function disconnectWallet(): Promise<ChainResult> {
+  if (!window.ethereum) return { success: true };
+  try {
+    await window.ethereum.request({ method: "wallet_revokePermissions", params: [{ eth_accounts: {} }] });
+  } catch {
+    // Not every EIP-1193 wallet supports permission revocation. The dApp still
+    // clears its session; account switching remains controlled by the wallet.
+  }
+  return { success: true };
+}
+
+export async function connectedWallet(): Promise<string> {
+  if (!window.ethereum) return "";
+  try {
+    const accounts = await window.ethereum.request({ method: "eth_accounts" }) as string[];
+    return accounts[0] || "";
+  } catch { return ""; }
+}
+
+export function watchWallet(listener: (address: string) => void): () => void {
+  if (!window.ethereum?.on) return () => undefined;
+  const onAccountsChanged = (accounts: string[]) => listener(accounts[0] || "");
+  window.ethereum.on("accountsChanged", onAccountsChanged);
+  return () => window.ethereum?.removeListener?.("accountsChanged", onAccountsChanged);
 }
 
 export async function readContract(functionName: string, args: unknown[] = []): Promise<ChainResult> {

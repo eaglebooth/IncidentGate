@@ -3,7 +3,7 @@
 import Image from "next/image";
 import { ArrowDown, ArrowRight, Check, ExternalLink, Fingerprint, LockKeyhole, Radio, RefreshCw, ShieldAlert, Sparkles, Wallet, X } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
-import { connectWallet, contractAddress, explorerAddress, explorerTargetAddress, explorerTx, isConfigured, networkName, readContract, targetAddress, unwrap, writeContract } from "@/lib/genlayer";
+import { connectedWallet, connectWallet, contractAddress, disconnectWallet, explorerAddress, explorerTargetAddress, explorerTx, isConfigured, networkName, readContract, targetAddress, unwrap, watchWallet, writeContract } from "@/lib/genlayer";
 
 type IntentState = { exists: boolean; policy_id?: string; assessor?: string; asset?: string; action?: string; chain_ref?: string; amount?: string; status?: string; verdict?: string; target_contract?: string; function_selector?: string; calldata_digest?: string; call_value?: string; operation_digest?: string; authorization_digest?: string; evidence_digest?: string; assessment_not_before?: string; assessment_deadline?: string; expires_at?: string; consumed?: boolean; reason?: string };
 type Stats = { policies: string; intents: string; executions: string; target_revision?: string; guarded_target?: string };
@@ -83,6 +83,17 @@ export default function Home() {
     return () => { active = false; };
   }, []);
 
+  useEffect(() => {
+    let active = true;
+    void connectedWallet().then(address => { if (active) setWallet(address); });
+    const unwatch = watchWallet(address => {
+      setWallet(address);
+      setNotice(address ? `Wallet switched to ${short(address)}.` : "Wallet disconnected. Connect another account to continue.");
+      setTxHash("");
+    });
+    return () => { active = false; unwatch(); };
+  }, []);
+
   const sync = useCallback(async () => {
     if (!isConfigured()) { setNotice("Preview mode — deploy the contract to enable live writes."); return; }
     setBusy("sync");
@@ -99,6 +110,15 @@ export default function Home() {
     const result = await connectWallet();
     if (result.success) { const address = String(result.data); setWallet(address); setDestination(current => current || address); setNotice("Wallet connected. Owner assesses; the separate treasury agent creates, schedules and executes."); }
     else setNotice(result.error || "Wallet connection failed.");
+  }
+
+  async function disconnect() {
+    await disconnectWallet();
+    setWallet("");
+    setDestination("");
+    setAgent("");
+    setTxHash("");
+    setNotice("Wallet disconnected. Select Connect wallet to choose another account.");
   }
 
   async function transact(label: string, method: string, args: unknown[], address?: string) {
@@ -136,7 +156,7 @@ export default function Home() {
       <nav className="nav shell" aria-label="Primary navigation">
         <a className="brand" href="#top" aria-label="IncidentGate home"><Image src="/incidentgate-mark-v2.png" alt="" width={44} height={44} priority/><span>Incident<span className="brand-gate">Gate</span></span></a>
         <div className="nav-links"><a href="#top">Overview</a><a href="#how">How it works</a><a href="#console">Control room</a><a href="#evidence">Trust</a><a href="#faq">FAQ</a></div>
-        <button className="wallet" onClick={connect}><Wallet size={16}/>{wallet ? short(wallet) : "Connect wallet"}</button>
+        <div className="wallet-session">{wallet ? <><button className="wallet wallet-address" onClick={connect} title="Open wallet account selector"><Wallet size={16}/>{short(wallet)}</button><button className="wallet disconnect" onClick={disconnect} aria-label="Disconnect wallet" title="Disconnect wallet"><X size={16}/><span>Disconnect</span></button></> : <button className="wallet" onClick={connect}><Wallet size={16}/>Connect wallet</button>}</div>
       </nav>
     </header>
 
