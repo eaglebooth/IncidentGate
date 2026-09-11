@@ -22,6 +22,7 @@ export const contractAddress = () => process.env.NEXT_PUBLIC_CONTRACT_ADDRESS ||
 export const targetAddress = () => process.env.NEXT_PUBLIC_TARGET_ADDRESS || "0x0000000000000000000000000000000000000000";
 export const isConfigured = () => !/^0x0{40}$/i.test(contractAddress()) && !/^0x0{40}$/i.test(targetAddress());
 export const explorerAddress = () => `${process.env.NEXT_PUBLIC_EXPLORER_ADDRESS_BASE || "https://explorer-studio.genlayer.com/address/"}${contractAddress()}`;
+export const explorerTargetAddress = () => `${process.env.NEXT_PUBLIC_EXPLORER_ADDRESS_BASE || "https://explorer-studio.genlayer.com/address/"}${targetAddress()}`;
 export const explorerTx = (hash: string) => `${process.env.NEXT_PUBLIC_EXPLORER_TX_BASE || "https://explorer-studio.genlayer.com/tx/"}${hash}`;
 
 export async function connectWallet(): Promise<ChainResult> {

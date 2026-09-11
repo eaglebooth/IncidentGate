@@ -3,7 +3,7 @@
 import Image from "next/image";
 import { ArrowDown, ArrowRight, Check, ExternalLink, Fingerprint, LockKeyhole, Radio, RefreshCw, ShieldAlert, Sparkles, Wallet, X } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
-import { connectWallet, contractAddress, explorerAddress, explorerTx, isConfigured, networkName, readContract, targetAddress, unwrap, writeContract } from "@/lib/genlayer";
+import { connectWallet, contractAddress, explorerAddress, explorerTargetAddress, explorerTx, isConfigured, networkName, readContract, targetAddress, unwrap, writeContract } from "@/lib/genlayer";
 
 type IntentState = { exists: boolean; policy_id?: string; assessor?: string; asset?: string; action?: string; chain_ref?: string; amount?: string; status?: string; verdict?: string; target_contract?: string; function_selector?: string; calldata_digest?: string; call_value?: string; operation_digest?: string; authorization_digest?: string; evidence_digest?: string; assessment_not_before?: string; assessment_deadline?: string; expires_at?: string; consumed?: boolean; reason?: string };
 type Stats = { policies: string; intents: string; executions: string; target_revision?: string; guarded_target?: string };
@@ -236,6 +236,6 @@ export default function Home() {
       </div>
     </section>
 
-    <footer className="footer shell"><div className="brand"><Image src="/incidentgate-mark-v2.png" alt="" width={38} height={38}/><span>Incident<span className="brand-gate">Gate</span></span></div><p>Built for Agent Tank · Autonomous Protocols</p><div><span className="footer-network"><i/> {deploymentReady ? networkName : "V8 DEPLOYMENT PENDING"}</span><span>{stats.policies} policies</span><span>{stats.intents} intents</span><span>{stats.executions} executions</span>{deploymentReady && <a href={explorerAddress()} target="_blank" rel="noreferrer">Contract <ExternalLink size={12}/></a>}</div><small>{deploymentReady ? short(contractAddress()) : EXPECTED_SCHEMA}</small></footer>
+    <footer className="footer shell"><div className="brand"><Image src="/incidentgate-mark-v2.png" alt="" width={38} height={38}/><span>Incident<span className="brand-gate">Gate</span></span></div><p>Built for Agent Tank · Autonomous Protocols</p><div><span className="footer-network"><i/> {deploymentReady ? networkName : "V8 DEPLOYMENT PENDING"}</span><span>{stats.policies} policies</span><span>{stats.intents} intents</span><span>{stats.executions} executions</span>{deploymentReady && <span className="contract-links"><a href={explorerAddress()} target="_blank" rel="noreferrer">IncidentGate V8 <ExternalLink size={12}/></a><a href={explorerTargetAddress()} target="_blank" rel="noreferrer">GuardedTarget <ExternalLink size={12}/></a></span>}</div><small>{deploymentReady ? `Gate ${short(contractAddress())} · Target ${short(targetContract)}` : EXPECTED_SCHEMA}</small></footer>
   </main>;
 }

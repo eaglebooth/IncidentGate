@@ -35,3 +35,6 @@ The revised compact asset removes the embedded wordmark, making the gate/door sy
 ## Moving trust rails
 
 The two supplied references reinforce a low-profile operational ticker: one-pixel green-gray borders, uppercase monospaced labels, mint checkmarks, and generous horizontal spacing. Both proof rails therefore use a seamless leftward marquee, pause on hover, clip at their own boundary, and collapse to a static wrapped list when reduced motion is requested.
+# Footer contract identity refinement
+
+The supplied production screenshot shows a three-column, low-contrast footer with a single contract link compressed into the right-side status cluster. Preserve the existing black/mint terminal aesthetic and centered release caption, but expose both deployed contracts as peer links. Keep the address summary centered below the grid and stack the two links into their own centered row on narrow screens.
