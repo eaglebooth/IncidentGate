@@ -140,6 +140,10 @@ export default function Home() {
   const scopes = unique(adapter.routes.map(item => item.chain));
   const assets = unique(adapter.routes.filter(item => item.chain === route.chain).map(item => item.asset));
   const actions = unique(adapter.routes.filter(item => item.chain === route.chain && item.asset === route.asset).map(item => item.action));
+  const previewAction = intent?.exists ? intent.action || route.action : route.action;
+  const previewAsset = intent?.exists ? intent.asset || route.asset : route.asset;
+  const previewScope = intent?.exists ? intent.chain_ref || route.chain : route.chain;
+  const previewAuthority = intent?.exists ? "Policy-bound" : adapter.name;
 
   function chooseRoute(next: Route) {
     setSelectedRoute(routeKey(next)); setPolicyId(policyKey(adapterId, next)); setIntent(null);
@@ -219,10 +223,10 @@ export default function Home() {
               <label>Amount / {route.asset} units<input inputMode="numeric" value={amount} onChange={e=>setAmount(e.target.value)}/></label>
               <label>Replay nonce<input value={nonce} onChange={e=>setNonce(e.target.value)}/></label>
             </div>
-            <div className="intent-preview"><div><span>Action</span><b>{route.action} {route.asset}</b></div><ArrowRight/><div><span>Authority / scope</span><b>{adapter.name} / {route.chain === "PLATFORM_INTERNAL" ? "internal" : route.chain}</b></div></div>
+            <div className="intent-preview"><div><span>Action</span><b>{previewAction} {previewAsset}</b></div><ArrowRight/><div><span>Authority / scope</span><b>{previewAuthority} / {previewScope === "PLATFORM_INTERNAL" ? "internal" : previewScope}</b></div></div>
             <div className="button-row">
               <button className="primary wide" disabled={!!busy || !wallet || !/^\d+$/.test(amount) || BigInt(amount) <= BigInt(0)} onClick={()=>transact("Create intent", "create_intent", [intentId, policyId, BigInt(amount), nonce])}>1. Agent creates intent <ArrowRight size={17}/></button>
-              <button className="outline wide" disabled={!!busy || !intent?.exists || status !== "CREATED"} onClick={()=>transact("Schedule assessment", "schedule_assessment", [intentId, 300])}>2. Agent locks ticket <LockKeyhole size={17}/></button>
+              <button className="outline wide" disabled={!!busy || !intent?.exists || status !== "CREATED"} onClick={()=>transact("Schedule assessment", "schedule_assessment", [intentId, 300])}>2. Agent schedules assessment <LockKeyhole size={17}/></button>
             </div>
             <button className="outline execute" disabled={!!busy || !intent?.exists || status !== "ASSESSMENT_SCHEDULED"} onClick={()=>transact("Assess intent", "assess_intent", [intentId])}>3. Owner assesses after 30s <Sparkles size={17}/></button>
             <button className="execute" disabled={!!busy || (!authorized && !queued)} onClick={()=>transact(queued ? "Retry queued execution" : "Queue guarded operation", queued ? "retry_execution" : "execute_intent", queued ? [intentId] : [intentId, intent?.authorization_digest || ""])}>{queued ? "4. Retry exact queued message" : "4. Queue execution through Gate"} <LockKeyhole size={17}/></button>

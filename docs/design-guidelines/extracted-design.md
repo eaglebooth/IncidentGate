@@ -38,3 +38,5 @@ The two supplied references reinforce a low-profile operational ticker: one-pixe
 # Footer contract identity refinement
 
 The supplied production screenshot shows a three-column, low-contrast footer with a single contract link compressed into the right-side status cluster. Preserve the existing black/mint terminal aesthetic and centered release caption, but expose both deployed contracts as peer links. Keep the address summary centered below the grid and stack the two links into their own centered row on narrow screens.
+
+Control labels must use the same lifecycle language as reviewer instructions and contract methods. After an intent exists, its authoritative readback—not the currently selected policy composer route—drives the operation preview to prevent stale or misleading labels.
