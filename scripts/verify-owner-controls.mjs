@@ -1,12 +1,12 @@
 import { createClient } from "genlayer-js";
-import { studioDevnet } from "genlayer-js/chains";
+import { studioNext } from "./network.mjs";
 
 const gate = process.env.INCIDENTGATE_CONTRACT_ADDRESS?.trim();
 const target = process.env.INCIDENTGATE_TARGET_ADDRESS?.trim();
 if (!/^0x[0-9a-fA-F]{40}$/.test(gate ?? "")) throw new Error("Missing INCIDENTGATE_CONTRACT_ADDRESS");
 if (!/^0x[0-9a-fA-F]{40}$/.test(target ?? "")) throw new Error("Missing INCIDENTGATE_TARGET_ADDRESS");
 
-const client = createClient({ chain: studioDevnet });
+const client = createClient({ chain: studioNext });
 
 async function read(address, functionName) {
   const raw = await client.readContract({ address, functionName, args: [] });
@@ -20,9 +20,10 @@ async function read(address, functionName) {
   return value;
 }
 
-const [targetStatus, gateStats] = await Promise.all([
+const [targetStatus, gateStats, gateVersion] = await Promise.all([
   read(target, "get_status"),
   read(gate, "get_stats"),
+  read(gate, "get_contract_version"),
 ]);
 
-process.stdout.write(`${JSON.stringify({ targetStatus, gateStats }, null, 2)}\n`);
+process.stdout.write(`${JSON.stringify({ targetStatus, gateStats, gateVersion }, null, 2)}\n`);

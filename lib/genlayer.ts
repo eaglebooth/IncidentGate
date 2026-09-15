@@ -11,10 +11,8 @@ declare global { interface Window { ethereum?: EthereumProvider } }
 export type ChainResult = { success: boolean; data?: unknown; hash?: string; error?: string };
 export const networkName = GENLAYER_NETWORK_NAME;
 export const contractAddress = () => process.env.NEXT_PUBLIC_CONTRACT_ADDRESS || "0x0000000000000000000000000000000000000000";
-export const targetAddress = () => process.env.NEXT_PUBLIC_TARGET_ADDRESS || "0x0000000000000000000000000000000000000000";
-export const isConfigured = () => !/^0x0{40}$/i.test(contractAddress()) && !/^0x0{40}$/i.test(targetAddress());
+export const isConfigured = () => !/^0x0{40}$/i.test(contractAddress());
 export const explorerAddress = () => `${process.env.NEXT_PUBLIC_EXPLORER_ADDRESS_BASE || "https://explorer-studio-dev.genlayer.com/address/"}${contractAddress()}`;
-export const explorerTargetAddress = () => `${process.env.NEXT_PUBLIC_EXPLORER_ADDRESS_BASE || "https://explorer-studio-dev.genlayer.com/address/"}${targetAddress()}`;
 export const explorerTx = (hash: string) => `${process.env.NEXT_PUBLIC_EXPLORER_TX_BASE || "https://explorer-studio-dev.genlayer.com/tx/"}${hash}`;
 
 async function ensureStudioNext(provider: EthereumProvider): Promise<void> {

@@ -16,7 +16,8 @@ def test_contract_is_valid_python_and_pins_runner():
 def test_intelligence_is_on_critical_path_but_does_not_authorize_directly():
     assert "gl.nondet.web.get" in SOURCE
     assert "gl.nondet.exec_prompt" in SOURCE
-    assert "gl.vm.run_nondet_unsafe" in SOURCE
+    assert "gl.vm.run_nondet(evaluate, validate)" in SOURCE
+    assert "run_nondet_unsafe" not in SOURCE
     prompt = SOURCE.split('prompt = """', 1)[1].split('"""', 1)[0]
     assert "AFFECTS_OPERATION" in prompt
     assert "ALLOW" not in prompt and "BLOCK" not in prompt
@@ -41,8 +42,8 @@ def test_reviewed_operation_catalog_is_enforced_before_storage():
     assert "MOONBEAM:GLMR:WITHDRAW" in SOURCE
     assert "UNSUPPORTED_OPERATION_PROFILE" in register
     assert register.index("UNSUPPORTED_OPERATION_PROFILE") < register.index("self.policies[pid]")
-    assert '"version": 9' in SOURCE
-    assert "autonomous-incident-gate-v9-consensus-v06" in SOURCE
+    assert '"version": 12' in SOURCE
+    assert "autonomous-incident-gate-v12-atomic-sdk-v03" in SOURCE
 
 
 def test_nondeterministic_fetch_uses_plain_storage_snapshot():
@@ -62,14 +63,13 @@ def test_positive_state_requires_every_gate():
 
 
 def test_execution_is_single_use_fresh_and_revision_bound():
-    authorization = SOURCE.split("def execute_intent", 1)[1].split("def _emit_execution", 1)[0]
-    confirm = SOURCE.split("def confirm_execution", 1)[1].split("def get_contract_version", 1)[0]
+    authorization = SOURCE.split("def execute_intent", 1)[1].split("def set_paused", 1)[0]
     for marker in ("intent.expires_at", "policy.revision", "intent.authorization_digest"):
         assert marker in authorization
-    assert "GUARDED_TARGET_ONLY" in confirm and "AUTHORIZATION_DIGEST_MISMATCH" in confirm
-    assert confirm.index("intent.consumed = True") < confirm.index('intent.status = "EXECUTED"')
-    assert "gl.get_contract_at(Address(self.guarded_target)).emit" in SOURCE
-    assert "gl.contract.get_at" not in SOURCE
+    assert "AUTHORIZATION_DIGEST_MISMATCH" in authorization
+    assert authorization.index("intent.consumed = True") < authorization.index('intent.status = "EXECUTED"')
+    assert "self.receipts[intent_id]" in authorization and "self.volume[volume_key]" in authorization
+    assert ".emit(" not in SOURCE and "get_at(" not in SOURCE
 
 
 def test_exact_call_and_delayed_assessment_are_bound():

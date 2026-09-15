@@ -1,6 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { createAccount, createClient } from "genlayer-js";
-import { studioDevnet } from "genlayer-js/chains";
+import { studioNext } from "./network.mjs";
 import { TransactionStatus } from "genlayer-js/types";
 
 async function readSecret() {
@@ -18,12 +18,10 @@ let secret = await readSecret();
 if (!secret) throw new Error("Pass deployer private key through stdin");
 const account = createAccount(secret.startsWith("0x") ? secret : `0x${secret}`);
 secret = "";
-const client = createClient({ chain: studioDevnet, account });
-const target = process.env.INCIDENTGATE_TARGET_ADDRESS?.trim();
-if (!target || !/^0x[0-9a-fA-F]{40}$/.test(target)) throw new Error("Missing INCIDENTGATE_TARGET_ADDRESS");
+const client = createClient({ chain: studioNext, account });
 const code = await readFile(new URL("../contracts/incident_gate.py", import.meta.url), "utf8");
 const estimate = await client.estimateTransactionFees();
-const hash = await client.deployContract({ code, args: [target], fees: { distribution: estimate.distribution, feeValue: estimate.feeValue } });
+const hash = await client.deployContract({ code, args: [], fees: { distribution: estimate.distribution, feeValue: estimate.feeValue } });
 process.stdout.write(`deployer: ${account.address}\ndeploy: ${hash}\n`);
 const receipt = await client.waitForTransactionReceipt({ hash, status: TransactionStatus.FINALIZED, interval: 2000, retries: 300 });
 process.stdout.write(`deploy finalized: ${JSON.stringify(receipt)}\n`);

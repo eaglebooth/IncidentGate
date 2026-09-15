@@ -3,12 +3,12 @@
 import Image from "next/image";
 import { ArrowDown, ArrowRight, Check, ExternalLink, Fingerprint, LockKeyhole, Radio, RefreshCw, ShieldAlert, Sparkles, Wallet, X } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { connectedWallet, connectWallet, contractAddress, disconnectWallet, explorerAddress, explorerTargetAddress, explorerTx, isConfigured, networkName, readContract, targetAddress, unwrap, watchWallet, writeContract } from "@/lib/genlayer";
+import { connectedWallet, connectWallet, contractAddress, disconnectWallet, explorerAddress, explorerTx, isConfigured, networkName, readContract, unwrap, watchWallet, writeContract } from "@/lib/genlayer";
 
 type IntentState = { exists: boolean; policy_id?: string; assessor?: string; asset?: string; action?: string; chain_ref?: string; amount?: string; status?: string; verdict?: string; target_contract?: string; function_selector?: string; calldata_digest?: string; call_value?: string; operation_digest?: string; authorization_digest?: string; evidence_digest?: string; assessment_not_before?: string; assessment_deadline?: string; expires_at?: string; consumed?: boolean; reason?: string };
-type Stats = { policies: string; intents: string; executions: string; target_revision?: string; guarded_target?: string };
+type Stats = { policies: string; intents: string; executions: string; target_revision?: string; paused?: string; protocol_owner?: string };
 type ContractVersion = { name?: string; version?: number; schema?: string };
-const EXPECTED_SCHEMA = "autonomous-incident-gate-v9-consensus-v06";
+const EXPECTED_SCHEMA = "autonomous-incident-gate-v12-atomic-sdk-v03";
 
 type Route = { chain: string; asset: string; action: string };
 const ADAPTERS = {
@@ -40,7 +40,7 @@ const FAQS = [
   ["Can you give one concrete example?", "A bot wants to buy 1,000 USDC through a Coinbase policy. If Coinbase reports that USDC buys are unavailable, the operation is blocked. If the report says only sends are delayed while buys remain unaffected, a short-lived, one-use authorization may be issued."],
   ["Who would use this in the real world?", "DAO treasuries, market makers, payment schedulers, bridge operators, trading bots and AI agents that act continuously. It reduces the risk of automation blindly executing while an official service notice says the relevant action is impaired."],
   ["What role does GenLayer play?", "Validators independently retrieve the fixed Coinbase or Kraken status source and reach consensus on one narrow semantic question: does this unresolved disclosure affect the bound operation? Deterministic contract code—not the model—then enforces identity, amount, target, nonce, expiry and replay rules."],
-  ["Does IncidentGate hold or move real funds?", "Not in this hackathon release. The live GuardedTarget proves an enforceable on-chain state transition and rejects bypasses, but it is not a production custody vault and it does not log in to Coinbase or Kraken. A separately audited treasury or trading executor can integrate behind the Gate."],
+  ["Does IncidentGate hold or move real funds?", "Not in this hackathon release. V12 atomically consumes a one-use authorization and records the governed operation, receipt and volume on-chain. It is not a custody vault and does not log in to Coinbase or Kraken; a separately audited executor can integrate this decision boundary."],
   ["What happens when evidence is missing or unclear?", "It fails closed. Source errors, malformed schemas, identity mismatch, ambiguous meaning, validator disagreement, expired authorization, stale policy or replay never produce a valid execution permission."],
 ] as const;
 const short = (value: string) => value.length > 13 ? `${value.slice(0, 7)}…${value.slice(-4)}` : value;
@@ -55,7 +55,6 @@ export default function Home() {
   const [nonce, setNonce] = useState("nonce-demo-001");
   const [destination, setDestination] = useState("");
   const [agent, setAgent] = useState("");
-  const targetContract = targetAddress();
   const [intent, setIntent] = useState<IntentState | null>(null);
   const [stats, setStats] = useState<Stats>({ policies: "0", intents: "0", executions: "0" });
   const [busy, setBusy] = useState("");
@@ -92,7 +91,7 @@ export default function Home() {
     if (!isConfigured()) return false;
     const result = await readContract("get_contract_version");
     const version = result.success ? unwrap<ContractVersion>(result.data) : null;
-    const valid = version?.name === "IncidentGate" && version.version === 9 && version.schema === EXPECTED_SCHEMA;
+    const valid = version?.name === "IncidentGate" && version.version === 12 && version.schema === EXPECTED_SCHEMA;
     setDeploymentReady(valid);
     return valid;
   }, []);
@@ -103,7 +102,7 @@ export default function Home() {
     void readContract("get_contract_version").then(result => {
       if (!active) return;
       const version = result.success ? unwrap<ContractVersion>(result.data) : null;
-      setDeploymentReady(version?.name === "IncidentGate" && version.version === 9 && version.schema === EXPECTED_SCHEMA);
+      setDeploymentReady(version?.name === "IncidentGate" && version.version === 12 && version.schema === EXPECTED_SCHEMA);
     });
     return () => { active = false; };
   }, []);
@@ -123,7 +122,7 @@ export default function Home() {
     if (!isConfigured()) { setNotice("Preview mode — deploy the contract to enable live writes."); return; }
     setBusy("sync");
     const compatible = await verifyDeployment();
-    if (!compatible) { setNotice("V9 deployment pending — configured address does not match the Studio Next / Consensus v0.6 handshake."); setBusy(""); return; }
+    if (!compatible) { setNotice("V12 deployment pending — configured address does not match the Studio Next atomic-execution handshake."); setBusy(""); return; }
     const sequence = ++readSequence.current;
     const [stateResult, statsResult] = await Promise.all([readContract("get_intent", [intentId]), readContract("get_stats")]);
     if (sequence !== readSequence.current) { setBusy(""); return; }
@@ -150,7 +149,7 @@ export default function Home() {
   }
 
   async function transact(label: string, method: string, args: unknown[], address?: string) {
-    if (!await verifyDeployment()) { setNotice("Write blocked: deploy and configure the V9 Gate on Studio Next before using this catalog."); return; }
+    if (!await verifyDeployment()) { setNotice("Write blocked: deploy and configure IncidentGate V12 on Studio Next first."); return; }
     setBusy(label); setTxHash(""); setNotice(`${label} submitted. Waiting for consensus and execution…`);
     const result = await writeContract(method, args, address);
     if (result.hash) setTxHash(result.hash);
@@ -161,7 +160,6 @@ export default function Home() {
 
   const status = loadedId !== intentId ? "SYNCING" : intent?.exists ? intent.status || "UNKNOWN" : "NO INTENT";
   const authorized = status === "AUTHORIZED";
-  const queued = status === "EXECUTION_QUEUED";
   const blocked = status.startsWith("BLOCKED_") || status === "SOURCE_FAILURE" || status === "EXPIRED";
   const adapter = ADAPTERS[adapterId];
   const route = adapter.routes.find(item => routeKey(item) === selectedRoute) || adapter.routes[0];
@@ -219,7 +217,7 @@ export default function Home() {
           ["01", "Bind intent", "Agent, destination, network, asset, action, amount and nonce become one immutable operation."],
           ["02", "Retrieve", "Validators independently fetch the selected pre-audited Coinbase or Kraken unresolved-incident feed."],
           ["03", "Judge relevance", "GenLayer resolves the semantic relation. It never outputs ALLOW or BLOCK."],
-          ["04", "Enforce", "Code consumes the capability once and emits the exact finalized operation to a Gate-only target."],
+          ["04", "Enforce", "One atomic transaction consumes the capability and records the exact operation receipt and volume on-chain."],
         ].map(([n,t,d]) => <article key={n}><span>{n}</span><div className="step-icon">{n === "01" ? <Fingerprint/> : n === "02" ? <Radio/> : n === "03" ? <Sparkles/> : <LockKeyhole/>}</div><h3>{t}</h3><p>{d}</p></article>)}
       </div>
     </section>
@@ -241,9 +239,9 @@ export default function Home() {
             <div className="field-grid policy-setup">
               <label>Separate treasury agent<input value={agent} onChange={e=>setAgent(e.target.value)} placeholder="0x… agent must differ from owner"/></label>
               <label>Bound destination<input value={destination} onChange={e=>setDestination(e.target.value)} placeholder="0x…"/></label>
-              <label>Reviewed GuardedTarget<input value={targetContract} readOnly aria-readonly="true"/></label>
+              <label>Atomic execution ledger<input value={contractAddress()} readOnly aria-readonly="true"/></label>
             </div>
-            <button className="execute setup" disabled={!!busy || !wallet || !agent || !destination || !/^0x[0-9a-fA-F]{40}$/.test(targetContract) || agent.toLowerCase() === wallet.toLowerCase()} onClick={()=>transact("Register policy", "register_policy", [policyId, agent, adapterId, adapter.source, adapter.pageId, adapter.name, destination, route.chain, route.asset, route.action, BigInt("1000000000000"), 300])}>0. Owner registers policy <Fingerprint size={17}/></button>
+            <button className="execute setup" disabled={!!busy || !wallet || !agent || !destination || agent.toLowerCase() === wallet.toLowerCase()} onClick={()=>transact("Register policy", "register_policy", [policyId, agent, adapterId, adapter.source, adapter.pageId, adapter.name, destination, route.chain, route.asset, route.action, BigInt("1000000000000"), 300])}>0. Owner registers policy <Fingerprint size={17}/></button>
             <div className="card-label intent-label">TRANSACTION INTENT</div>
             <div className="field-grid">
               <label>Intent ID<input value={intentId} disabled={!!busy} onChange={e=>{setIntentId(e.target.value); setIntent(null); setLoadedId("");}}/></label>
@@ -257,7 +255,7 @@ export default function Home() {
               <button className="outline wide" disabled={!!busy || !intent?.exists || status !== "CREATED"} onClick={()=>transact("Schedule assessment", "schedule_assessment", [intentId, 300])}>2. Agent schedules assessment <LockKeyhole size={17}/></button>
             </div>
             <button className="outline execute" disabled={!!busy || !intent?.exists || status !== "ASSESSMENT_SCHEDULED"} onClick={()=>transact("Assess intent", "assess_intent", [intentId])}>3. Owner assesses after 30s <Sparkles size={17}/></button>
-            <button className="execute" disabled={!!busy || (!authorized && !queued)} onClick={()=>transact(queued ? "Retry queued execution" : "Queue guarded operation", queued ? "retry_execution" : "execute_intent", queued ? [intentId] : [intentId, intent?.authorization_digest || ""])}>{queued ? "4. Retry exact queued message" : "4. Queue execution through Gate"} <LockKeyhole size={17}/></button>
+            <button className="execute" disabled={!!busy || !authorized} onClick={()=>transact("Execute governed operation", "execute_intent", [intentId, intent?.authorization_digest || ""])}>4. Execute atomically through Gate <LockKeyhole size={17}/></button>
           </div>
           <aside className={`verdict ${authorized ? "allow" : blocked ? "deny" : "idle"}`}>
             <div className="card-label">AUTHORITATIVE READBACK</div>
@@ -274,7 +272,7 @@ export default function Home() {
 
     <section id="evidence" className="evidence shell">
       <div className="section-number">04 — TRUST BOUNDARY</div>
-      <div className="evidence-grid"><div><h2>Two audited authorities.<br/>{ROUTE_COUNT} enforced routes.</h2><p>Coinbase and Kraken cover exchange-internal activity plus Ethereum, Base, Bitcoin, Solana and Moonbeam funding paths. Every combination is reviewed and enforced by V9; arbitrary assets, actions or networks revert before policy creation.</p><strong className="mvp-statement">Broad enough to prove utility. Narrow enough to audit.</strong></div><div className="source-stack">{Object.entries(ADAPTERS).map(([id,item])=><a className="source-card" href={item.source} target="_blank" rel="noreferrer" key={id}><span>AUDITED LIVE JSON · {id}</span><b>status.{item.name.toLowerCase()}.com</b><small>{item.routes.length} contract-approved routes</small><ExternalLink/></a>)}</div></div>
+      <div className="evidence-grid"><div><h2>Two audited authorities.<br/>{ROUTE_COUNT} enforced routes.</h2><p>Coinbase and Kraken cover exchange-internal activity plus Ethereum, Base, Bitcoin, Solana and Moonbeam funding paths. Every combination is reviewed and enforced by V12; arbitrary assets, actions or networks revert before policy creation.</p><strong className="mvp-statement">Broad enough to prove utility. Narrow enough to audit.</strong></div><div className="source-stack">{Object.entries(ADAPTERS).map(([id,item])=><a className="source-card" href={item.source} target="_blank" rel="noreferrer" key={id}><span>AUDITED LIVE JSON · {id}</span><b>status.{item.name.toLowerCase()}.com</b><small>{item.routes.length} contract-approved routes</small><ExternalLink/></a>)}</div></div>
       <div className="boundary marquee"><div className="marquee-track boundary-track">{[0, 1].map(copy => <div className="marquee-group boundary-group" aria-hidden={copy === 1} key={copy}>{CONTROLS.map(item => <div key={item}><Check/> {item}</div>)}</div>)}</div></div>
     </section>
 
@@ -289,6 +287,6 @@ export default function Home() {
       </div>
     </section>
 
-    <footer className="footer shell"><div className="brand"><Image src="/incidentgate-mark-v2.png" alt="" width={38} height={38}/><span>Incident<span className="brand-gate">Gate</span></span></div><p>Built for Agent Tank · Autonomous Protocols</p><div><span className="footer-network"><i/> {deploymentReady ? "STUDIO NEXT" : "V9 DEPLOYMENT PENDING"}</span><span>{stats.policies} policies</span><span>{stats.intents} intents</span><span>{stats.executions} executions</span>{deploymentReady && <span className="contract-links"><a href={explorerAddress()} target="_blank" rel="noreferrer">IncidentGate V9 <ExternalLink size={12}/></a><a href={explorerTargetAddress()} target="_blank" rel="noreferrer">GuardedTarget <ExternalLink size={12}/></a></span>}</div><small>{deploymentReady ? `Gate ${short(contractAddress())} · Target ${short(targetContract)} · ${networkName}` : EXPECTED_SCHEMA}</small></footer>
+    <footer className="footer shell"><div className="brand"><Image src="/incidentgate-mark-v2.png" alt="" width={38} height={38}/><span>Incident<span className="brand-gate">Gate</span></span></div><p>Built for Agent Tank · Autonomous Protocols</p><div><span className="footer-network"><i/> {deploymentReady ? "STUDIO NEXT" : "V12 DEPLOYMENT PENDING"}</span><span>{stats.policies} policies</span><span>{stats.intents} intents</span><span>{stats.executions} executions</span>{deploymentReady && <span className="contract-links"><a href={explorerAddress()} target="_blank" rel="noreferrer">IncidentGate V12 <ExternalLink size={12}/></a></span>}</div><small>{deploymentReady ? `Atomic Gate ${short(contractAddress())} · ${networkName}` : EXPECTED_SCHEMA}</small></footer>
   </main>;
 }

@@ -1,5 +1,5 @@
-import { createAccount, createClient } from "genlayer-js";
-import { studioDevnet } from "genlayer-js/chains";
+import { createAccount, createClient, deriveInternalMessageCallKey, encodeInternalMessageFeeParams, MessageType } from "genlayer-js";
+import { studioNext } from "./network.mjs";
 import { TransactionStatus, transactionResultNumberToName } from "genlayer-js/types";
 
 const contract = process.env.INCIDENTGATE_CONTRACT_ADDRESS?.trim();
@@ -24,8 +24,8 @@ const ownerAccount = createAccount(keys[0].startsWith("0x") ? keys[0] : `0x${key
 const agentAccount = createAccount(keys[1].startsWith("0x") ? keys[1] : `0x${keys[1]}`);
 keys.fill("");
 if (ownerAccount.address.toLowerCase() === agentAccount.address.toLowerCase()) throw new Error("Owner and agent must differ");
-const owner = createClient({ chain: studioDevnet, account: ownerAccount });
-const agent = createClient({ chain: studioDevnet, account: agentAccount });
+const owner = createClient({ chain: studioNext, account: ownerAccount });
+const agent = createClient({ chain: studioNext, account: agentAccount });
 
 function failure(tx, receipt) {
   const leader = tx?.consensus_data?.leader_receipt?.[0];
@@ -71,9 +71,30 @@ async function finalized(client, hash) {
 }
 
 const transactions = [];
+function messageAllocations(functionName, expectedError) {
+  if (expectedError || (functionName !== "execute_intent" && functionName !== "retry_execution")) return [];
+  const feeParams = encodeInternalMessageFeeParams({ leaderTimeunitsAllocation: 100n, validatorTimeunitsAllocation: 200n });
+  return [
+    { messageType: MessageType.Internal, onAcceptance: false, recipient: targetContract, callKey: deriveInternalMessageCallKey("apply_authorized"), budget: 1_500_000n, feeParams },
+    { messageType: MessageType.Internal, onAcceptance: false, recipient: contract, callKey: deriveInternalMessageCallKey("confirm_execution"), parentIndex: 0n, budget: 700_000n, feeParams },
+  ];
+}
 async function write(label, functionName, args, client, expectedError = "", address = contract) {
-  const estimate = await retry(`${label}.fees`, () => client.estimateTransactionFeesForWrite({ address, functionName, args, value: 0n }));
-  const fees = { distribution: estimate.distribution, feeValue: estimate.feeValue };
+  const allocations = messageAllocations(functionName, expectedError);
+  let estimate;
+  try {
+    estimate = await retry(`${label}.fees`, () => client.estimateTransactionFeesForWrite({ address, functionName, args, value: 0n, messageAllocations: allocations }), 2);
+  } catch (error) {
+    const payload = error?.cause?.data?.receipt?.result;
+    const readable = typeof payload === "string" ? Buffer.from(payload, "base64").toString("utf8") : "simulation failed";
+    process.stdout.write(`${label}.fees: ${readable}; using network fee preset\n`);
+    estimate = await retry(`${label}.baseFees`, () => client.estimateTransactionFees({
+      leaderTimeunitsAllocation: 600,
+      validatorTimeunitsAllocation: 600,
+      messageAllocations: allocations,
+    }));
+  }
+  const fees = { distribution: estimate.distribution, messageAllocations: estimate.messageAllocations ?? allocations, feeValue: estimate.feeValue };
   const hash = await retry(`${label}.submit`, () => client.writeContract({ address, functionName, args, value: 0n, fees }));
   transactions.push({ label, hash }); process.stdout.write(`${label}: ${hash}\n`);
   const { receipt, tx } = await finalized(client, hash); const rejected = failure(tx, receipt);
@@ -83,7 +104,7 @@ async function write(label, functionName, args, client, expectedError = "", addr
 }
 
 const version = await read("get_contract_version");
-if (version.name !== "IncidentGate" || version.version !== 9 || version.schema !== "autonomous-incident-gate-v9-consensus-v06") throw new Error("Contract handshake failed");
+if (version.name !== "IncidentGate" || version.version !== 11 || version.schema !== "autonomous-incident-gate-v11-sdk-v03") throw new Error("Contract handshake failed");
 const initialStats = await read("get_stats");
 if (String(initialStats.guarded_target).toLowerCase() !== targetContract.toLowerCase()) throw new Error("IncidentGate constructor target mismatch");
 const targetStatus = await readTarget("get_status");
@@ -100,6 +121,26 @@ const waitUntilAssessmentReady = async (intentId) => {
   const delayMs = Math.max(0, Number(state.assessment_not_before) * 1000 - Date.now() + 1500);
   if (delayMs) await new Promise(resolve => setTimeout(resolve, delayMs));
 };
+
+const resumeQueueIntent = process.env.INCIDENTGATE_RESUME_QUEUE_INTENT?.trim();
+if (resumeQueueIntent) {
+  let queued = await read("get_intent", [resumeQueueIntent]);
+  if (queued.status !== "AUTHORIZED" || !queued.authorization_digest) throw new Error(`Resume queue intent is not active: ${queued.status}`);
+  await write("coinbase.queueExecution", "execute_intent", [resumeQueueIntent, queued.authorization_digest], agent);
+  let targetReceipt = { exists: false };
+  for (let attempt = 0; attempt < 30 && !targetReceipt.exists; attempt++) {
+    targetReceipt = await readTarget("get_receipt", [resumeQueueIntent]);
+    if (!targetReceipt.exists) await new Promise(resolve => setTimeout(resolve, 3000));
+  }
+  for (let attempt = 0; attempt < 30 && queued.status !== "EXECUTED"; attempt++) {
+    queued = await read("get_intent", [resumeQueueIntent]);
+    if (queued.status !== "EXECUTED") await new Promise(resolve => setTimeout(resolve, 3000));
+  }
+  if (!targetReceipt.exists || queued.status !== "EXECUTED") throw new Error("Funded message chain did not complete");
+  await write("coinbase.replay", "execute_intent", [resumeQueueIntent, queued.authorization_digest], agent, "AUTHORIZATION_NOT_ACTIVE");
+  process.stdout.write(`QUEUE_RESUME_COMPLETE ${JSON.stringify({ intent: resumeQueueIntent, state: queued, targetReceipt, transactions }, null, 2)}\n`);
+  process.exit(0);
+}
 
 const resumeCoinbasePolicy = process.env.INCIDENTGATE_RESUME_COINBASE_POLICY?.trim();
 if (resumeCoinbasePolicy) {
@@ -125,11 +166,26 @@ await write("coinbase.schedule", "schedule_assessment", [coinbaseIntent, 300], a
 await waitUntilAssessmentReady(coinbaseIntent);
 await write("coinbase.assess", "assess_intent", [coinbaseIntent], owner);
 let coinbaseState = await read("get_intent", [coinbaseIntent]);
-if (coinbaseState.status === "SOURCE_FAILURE") throw new Error(`V9 Coinbase regression failed: ${coinbaseState.reason}`);
+if (coinbaseState.status === "SOURCE_FAILURE") throw new Error(`V11 Coinbase regression failed: ${coinbaseState.reason}`);
 if (coinbaseState.status === "AUTHORIZED") {
   await write("coinbase.mutatedDigest", "execute_intent", [coinbaseIntent, "0".repeat(64)], agent, "AUTHORIZATION_DIGEST_MISMATCH");
   await write("coinbase.queueExecution", "execute_intent", [coinbaseIntent, coinbaseState.authorization_digest], agent);
 } else if (!["BLOCKED_INCIDENT", "BLOCKED_UNCERTAIN"].includes(coinbaseState.status)) throw new Error(`Unexpected Coinbase status ${coinbaseState.status}`);
+
+if (process.env.INCIDENTGATE_FAIL_FAST_QUEUE === "1") {
+  let receipt = { exists: false };
+  for (let attempt = 0; attempt < 30 && !receipt.exists; attempt++) {
+    receipt = await readTarget("get_receipt", [coinbaseIntent]);
+    if (!receipt.exists) await new Promise(resolve => setTimeout(resolve, 3000));
+  }
+  for (let attempt = 0; attempt < 30 && coinbaseState.status !== "EXECUTED"; attempt++) {
+    coinbaseState = await read("get_intent", [coinbaseIntent]);
+    if (coinbaseState.status !== "EXECUTED") await new Promise(resolve => setTimeout(resolve, 3000));
+  }
+  if (!receipt.exists || coinbaseState.status !== "EXECUTED") throw new Error("Cross-contract fail-fast did not complete");
+  process.stdout.write(`CROSS_CONTRACT_FAIL_FAST_COMPLETE ${JSON.stringify({ intent: coinbaseIntent, state: coinbaseState, receipt, transactions }, null, 2)}\n`);
+  process.exit(0);
+}
 
 await write("target.direct", "apply_authorized", [`direct-${tag}`, "0".repeat(64), "0".repeat(64), agentAccount.address, destination, "PLATFORM_INTERNAL", "USDC", "BUY", 1000n, 0, Math.floor(Date.now() / 1000) + 300], owner, "INCIDENT_GATE_ONLY", targetContract);
 await write("wrongCaller.create", "create_intent", [`wrong-${tag}`, coinbasePolicy, 1000n, `wrong-nonce-${tag}`], owner, "AGENT_ONLY");

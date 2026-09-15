@@ -38,7 +38,7 @@ class GuardedTarget(gl.contract.Contract):
         self.paused = bool(paused)
         self.pause_revision += u256(1)
         if self.incident_gate:
-            gl.get_contract_at(Address(self.incident_gate)).emit(on="finalized").sync_target_revision(int(self.pause_revision))
+            gl.contract.get_at(Address(self.incident_gate)).emit(on="finalized").sync_target_revision(int(self.pause_revision))
 
     @gl.public.write
     def apply_authorized(self, intent_id: str, authorization_digest: str, operation_digest: str, agent: str,
@@ -48,7 +48,7 @@ class GuardedTarget(gl.contract.Contract):
             raise gl.vm.UserError("INCIDENT_GATE_ONLY")
         if intent_id in self.applied:
             receipt = json.loads(self.receipts[intent_id])
-            gl.get_contract_at(Address(self.incident_gate)).emit(on="finalized").confirm_execution(
+            gl.contract.get_at(Address(self.incident_gate)).emit(on="finalized").confirm_execution(
                 intent_id, str(receipt["authorization_digest"]))
             return
         if self.paused:
@@ -67,14 +67,14 @@ class GuardedTarget(gl.contract.Contract):
             "chain_ref": chain_ref, "asset": asset, "action": action, "amount": str(amount)},
             sort_keys=True, separators=(",", ":"))
         self.operation_count += u256(1)
-        gl.get_contract_at(Address(self.incident_gate)).emit(on="finalized").confirm_execution(intent_id, authorization_digest)
+        gl.contract.get_at(Address(self.incident_gate)).emit(on="finalized").confirm_execution(intent_id, authorization_digest)
 
     @gl.public.write
     def retry_confirmation(self, intent_id: str) -> None:
         if intent_id not in self.applied:
             raise gl.vm.UserError("TARGET_RECEIPT_NOT_FOUND")
         receipt = json.loads(self.receipts[intent_id])
-        gl.get_contract_at(Address(self.incident_gate)).emit(on="finalized").confirm_execution(
+        gl.contract.get_at(Address(self.incident_gate)).emit(on="finalized").confirm_execution(
             intent_id, str(receipt["authorization_digest"]))
 
     @gl.public.view

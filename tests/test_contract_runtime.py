@@ -121,16 +121,16 @@ class FakeVm:
     reject_consensus = False
 
     @staticmethod
-    def run_nondet_unsafe(leader_fn, validator_fn):
+    def run_nondet(leader_fn, validator_fn):
         raw = leader_fn()
         if FakeVm.reject_consensus or not validator_fn(FakeReturn(raw)):
             raise UserError("VALIDATOR_DISAGREEMENT")
         return raw
 
 
-fake_gl = types.SimpleNamespace(contract=types.SimpleNamespace(Contract=object), storage=types.SimpleNamespace(TreeMap=TreeMap),
+fake_gl = types.SimpleNamespace(contract=types.SimpleNamespace(Contract=object, get_at=FakeContractApi.get_at), storage=types.SimpleNamespace(TreeMap=TreeMap),
     public=types.SimpleNamespace(write=Decorator(), view=Decorator()), vm=FakeVm, message=Message(),
-    nondet=FakeNondet, get_contract_at=FakeContractApi.get_at)
+    nondet=FakeNondet)
 fake_module = types.ModuleType("genlayer")
 fake_module.gl = fake_gl
 fake_module.u256 = int
@@ -140,7 +140,6 @@ fake_module.public = fake_gl.public
 fake_module.vm = fake_gl.vm
 fake_module.message = fake_gl.message
 fake_module.nondet = fake_gl.nondet
-fake_module.get_contract_at = fake_gl.get_contract_at
 fake_gl.u256 = int
 fake_module.bigint = int
 fake_module.TreeMap = TreeMap
@@ -192,8 +191,8 @@ def test_current_coinbase_offset_timestamp_shape_passes_structural_validation():
 
 
 def contract_with_policy():
-    c = module.IncidentGate(TARGET)
-    c.policies, c.intents, c.policy_keys, c.intent_keys, c.used_nonces = TreeMap(), TreeMap(), TreeMap(), TreeMap(), TreeMap()
+    c = module.IncidentGate()
+    c.policies, c.intents, c.policy_keys, c.intent_keys, c.used_nonces, c.receipts, c.volume = TreeMap(), TreeMap(), TreeMap(), TreeMap(), TreeMap(), TreeMap(), TreeMap()
     c._now = lambda: 1_800_000_000
     fake_gl.message.sender_address.as_hex = OWNER
     FakeWeb.expected_url = URL
@@ -203,8 +202,8 @@ def contract_with_policy():
 
 
 def contract_with_kraken_policy():
-    c = module.IncidentGate(TARGET)
-    c.policies, c.intents, c.policy_keys, c.intent_keys, c.used_nonces = TreeMap(), TreeMap(), TreeMap(), TreeMap(), TreeMap()
+    c = module.IncidentGate()
+    c.policies, c.intents, c.policy_keys, c.intent_keys, c.used_nonces, c.receipts, c.volume = TreeMap(), TreeMap(), TreeMap(), TreeMap(), TreeMap(), TreeMap(), TreeMap()
     c._now = lambda: 1_800_000_000
     fake_gl.message.sender_address.as_hex = OWNER
     FakeWeb.expected_url = KRAKEN_URL
@@ -238,12 +237,13 @@ def test_explicit_exclusion_authorizes_then_executes_once():
     assert len(state["authorization_digest"]) == 64
     fake_gl.message.sender_address.as_hex = AGENT
     c.execute_intent("intent-1", state["authorization_digest"])
-    assert c.get_intent("intent-1")["status"] == "EXECUTION_QUEUED"
-    fake_gl.message.sender_address.as_hex = TARGET
-    c.confirm_execution("intent-1", state["authorization_digest"])
-    assert c.get_intent("intent-1")["status"] == "EXECUTED"
-    with pytest.raises(UserError, match="EXECUTION_NOT_QUEUED"):
-        c.confirm_execution("intent-1", state["authorization_digest"])
+    executed = c.get_intent("intent-1")
+    assert executed["status"] == "EXECUTED" and executed["consumed"]
+    assert c.get_execution_receipt("intent-1")["exists"]
+    assert c.get_volume("PLATFORM_INTERNAL", "USDC", "BUY") == "1000"
+    assert c.get_stats()["executions"] == "1"
+    with pytest.raises(UserError, match="AUTHORIZATION_NOT_ACTIVE"):
+        c.execute_intent("intent-1", state["authorization_digest"])
 
 
 def test_wrong_subject_fails_closed():
@@ -281,10 +281,10 @@ def test_policy_rotation_invalidates_existing_intent():
         c.assess_intent("intent-1")
 
 
-def test_target_revision_change_invalidates_assessment_and_authorized_execution():
+def test_emergency_pause_revision_invalidates_assessment_and_authorized_execution():
     c = contract_with_policy(); create(c)
-    fake_gl.message.sender_address.as_hex = TARGET
-    c.sync_target_revision(1)
+    fake_gl.message.sender_address.as_hex = OWNER
+    c.set_paused(True)
     fake_gl.message.sender_address.as_hex = OWNER
     FakeWeb.response = Response(feed("Sends delayed; buys are unaffected."))
     with pytest.raises(UserError, match="STALE_TARGET_REVISION"):
@@ -294,8 +294,9 @@ def test_target_revision_change_invalidates_assessment_and_authorized_execution(
     FakeWeb.response = Response(feed("Sends delayed; buys are unaffected."))
     assert fresh.assess_intent("intent-1") == "AUTHORIZED"
     digest = fresh.get_intent("intent-1")["authorization_digest"]
-    fake_gl.message.sender_address.as_hex = TARGET
-    fresh.sync_target_revision(1)
+    fake_gl.message.sender_address.as_hex = OWNER
+    fresh.set_paused(True)
+    fresh.set_paused(False)
     fake_gl.message.sender_address.as_hex = AGENT
     with pytest.raises(UserError, match="AUTHORIZATION_TARGET_STALE"):
         fresh.execute_intent("intent-1", digest)
@@ -324,7 +325,7 @@ def test_expired_and_wrong_digest_authorizations_revert_without_consumption():
         c.execute_intent("intent-1", "0" * 64)
 
 
-def test_expired_queued_authorization_cannot_be_reemitted():
+def test_executed_authorization_cannot_be_replayed_even_after_expiry():
     c = contract_with_policy(); create(c)
     FakeWeb.response = Response(feed("Sends delayed; buys are unaffected."))
     assert c.assess_intent("intent-1") == "AUTHORIZED"
@@ -332,13 +333,9 @@ def test_expired_queued_authorization_cannot_be_reemitted():
     fake_gl.message.sender_address.as_hex = AGENT
     c.execute_intent("intent-1", state["authorization_digest"])
     c._now = lambda: int(state["expires_at"])
-    with pytest.raises(UserError, match="QUEUED_AUTHORIZATION_EXPIRED"):
-        c.retry_execution("intent-1")
-    assert not c.get_intent("intent-1")["consumed"]
-    c._now = lambda: int(state["expires_at"])
     with pytest.raises(UserError, match="AUTHORIZATION_NOT_ACTIVE"):
         c.execute_intent("intent-1", state["authorization_digest"])
-    assert not c.get_intent("intent-1")["consumed"]
+    assert c.get_intent("intent-1")["consumed"]
 
 
 def test_audited_kraken_adapter_binds_identity_and_blocks_relevant_funding_incident():
@@ -449,8 +446,8 @@ def test_kraken_wrong_identity_and_source_failure_both_fail_closed():
 
 
 def test_unregistered_third_party_adapter_is_rejected():
-    c = module.IncidentGate(TARGET)
-    c.policies, c.intents, c.policy_keys, c.intent_keys, c.used_nonces = TreeMap(), TreeMap(), TreeMap(), TreeMap(), TreeMap()
+    c = module.IncidentGate()
+    c.policies, c.intents, c.policy_keys, c.intent_keys, c.used_nonces, c.receipts, c.volume = TreeMap(), TreeMap(), TreeMap(), TreeMap(), TreeMap(), TreeMap(), TreeMap()
     fake_gl.message.sender_address.as_hex = OWNER
     with pytest.raises(UserError, match="INVALID_POLICY_BINDING"):
         c.register_policy("fake-source", AGENT, "FAKE", "https://attacker.example/incidents.json", "attacker", "Fake",
@@ -458,8 +455,8 @@ def test_unregistered_third_party_adapter_is_rejected():
 
 
 def test_policy_assessor_cannot_also_be_beneficiary_agent():
-    c = module.IncidentGate(TARGET)
-    c.policies, c.intents, c.policy_keys, c.intent_keys, c.used_nonces = TreeMap(), TreeMap(), TreeMap(), TreeMap(), TreeMap()
+    c = module.IncidentGate()
+    c.policies, c.intents, c.policy_keys, c.intent_keys, c.used_nonces, c.receipts, c.volume = TreeMap(), TreeMap(), TreeMap(), TreeMap(), TreeMap(), TreeMap(), TreeMap()
     fake_gl.message.sender_address.as_hex = OWNER
     with pytest.raises(UserError, match="ASSESSOR_MUST_DIFFER_FROM_AGENT"):
         c.register_policy("self-assessed", OWNER, "COINBASE", URL, "kr0djjh0jyy9", "Coinbase",
@@ -472,8 +469,8 @@ def test_policy_assessor_cannot_also_be_beneficiary_agent():
     ("PLATFORM_INTERNAL", "USDC", "SELL", '"action":"SELL"'),
 ])
 def test_nearby_but_different_operation_dimensions_are_bound_for_semantic_decision(chain, asset, action, expected_token):
-    c = module.IncidentGate(TARGET)
-    c.policies, c.intents, c.policy_keys, c.intent_keys, c.used_nonces = TreeMap(), TreeMap(), TreeMap(), TreeMap(), TreeMap()
+    c = module.IncidentGate()
+    c.policies, c.intents, c.policy_keys, c.intent_keys, c.used_nonces, c.receipts, c.volume = TreeMap(), TreeMap(), TreeMap(), TreeMap(), TreeMap(), TreeMap(), TreeMap()
     c._now = lambda: 1_800_000_000
     fake_gl.message.sender_address.as_hex = OWNER
     FakeWeb.expected_url = URL
@@ -500,8 +497,8 @@ def test_nearby_but_different_operation_dimensions_are_bound_for_semantic_decisi
 ])
 def test_every_reviewed_operation_profile_can_be_registered(protocol, source, page_id, page_name,
                                                              chain, asset, action):
-    c = module.IncidentGate(TARGET)
-    c.policies, c.intents, c.policy_keys, c.intent_keys, c.used_nonces = TreeMap(), TreeMap(), TreeMap(), TreeMap(), TreeMap()
+    c = module.IncidentGate()
+    c.policies, c.intents, c.policy_keys, c.intent_keys, c.used_nonces, c.receipts, c.volume = TreeMap(), TreeMap(), TreeMap(), TreeMap(), TreeMap(), TreeMap(), TreeMap()
     fake_gl.message.sender_address.as_hex = OWNER
     policy_id = (protocol + "-" + chain + "-" + asset + "-" + action).lower()
     c.register_policy(policy_id, AGENT, protocol.lower(), source, page_id, page_name,
@@ -519,8 +516,8 @@ def test_every_reviewed_operation_profile_can_be_registered(protocol, source, pa
     ("KRAKEN", "PLATFORM_INTERNAL", "DOGE", "TRADE"),
 ])
 def test_near_miss_operation_profiles_are_rejected(protocol, chain, asset, action):
-    c = module.IncidentGate(TARGET)
-    c.policies, c.intents, c.policy_keys, c.intent_keys, c.used_nonces = TreeMap(), TreeMap(), TreeMap(), TreeMap(), TreeMap()
+    c = module.IncidentGate()
+    c.policies, c.intents, c.policy_keys, c.intent_keys, c.used_nonces, c.receipts, c.volume = TreeMap(), TreeMap(), TreeMap(), TreeMap(), TreeMap(), TreeMap(), TreeMap()
     fake_gl.message.sender_address.as_hex = OWNER
     adapter = module.ADAPTERS[protocol]
     with pytest.raises(UserError, match="UNSUPPORTED_OPERATION_PROFILE"):
@@ -566,20 +563,19 @@ def test_operation_digest_is_bound_before_assessment():
     assert len(state["operation_digest"]) == 64
     assert state["assessment_round"] == "1"
     assert state["assessor"] == OWNER
-    assert state["target_contract"] == TARGET
+    assert state["target_contract"] == GATE
     assert state["function_selector"] == module.GOVERNED_SELECTOR
     assert len(state["calldata_digest"]) == 64
     assert state["assessment_not_before"] == "1800000030"
 
 
-def test_invalid_global_guarded_target_is_rejected():
-    with pytest.raises(UserError, match="INVALID_GUARDED_TARGET"):
-        module.IncidentGate("0x1234")
-
-
-def test_constructor_pinned_target_is_publicly_verifiable_before_irreversible_binding():
+def test_atomic_executor_owner_and_pause_state_are_publicly_verifiable():
     c = contract_with_policy()
-    assert c.get_stats()["guarded_target"] == TARGET
+    assert c.get_stats()["protocol_owner"] == OWNER
+    assert c.get_stats()["paused"] == "False"
+    fake_gl.message.sender_address.as_hex = OUTSIDER
+    with pytest.raises(UserError, match="PROTOCOL_OWNER_ONLY"):
+        c.set_paused(True)
 
 
 def test_hallucinated_incident_id_never_authorizes_or_blocks_as_valid_evidence():

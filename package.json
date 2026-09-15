@@ -9,12 +9,11 @@
     "start": "next start",
     "lint": "eslint",
     "test": "python -m pytest -q",
-    "test:live": "node scripts/live-suite.mjs",
+    "test:live": "node scripts/live-v12.mjs",
     "test:hardening": "node scripts/live-hardening.mjs",
     "test:kraken-retry": "node scripts/kraken-retry.mjs",
     "deploy:studio-next": "node scripts/deploy.mjs",
-    "deploy:target": "node scripts/deploy-target.mjs",
-    "bind:target": "node scripts/bind-target.mjs"
+    "schema:studio-next": "node scripts/check-contract-schema.mjs"
   },
   "dependencies": {
     "@genlayer/transaction-kit": "0.1.0-rc.2",

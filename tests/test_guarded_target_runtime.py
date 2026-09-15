@@ -57,10 +57,9 @@ class FakeProxy:
         return FakeEmitter()
 
 
-fake_gl = types.SimpleNamespace(contract=types.SimpleNamespace(Contract=object), storage=types.SimpleNamespace(TreeMap=TreeMap), public=types.SimpleNamespace(write=Decorator(), view=Decorator()),
+fake_gl = types.SimpleNamespace(contract=types.SimpleNamespace(Contract=object, get_at=lambda _address: FakeProxy()), storage=types.SimpleNamespace(TreeMap=TreeMap), public=types.SimpleNamespace(write=Decorator(), view=Decorator()),
                                 vm=types.SimpleNamespace(UserError=UserError),
-                                message=types.SimpleNamespace(sender_address=sender, contract_address=types.SimpleNamespace(as_hex=TARGET)),
-                                get_contract_at=lambda _address: FakeProxy())
+                                message=types.SimpleNamespace(sender_address=sender, contract_address=types.SimpleNamespace(as_hex=TARGET)))
 fake_module = types.ModuleType("genlayer")
 fake_module.gl = fake_gl
 fake_module.u256 = int
@@ -69,7 +68,6 @@ fake_module.storage = fake_gl.storage
 fake_module.public = fake_gl.public
 fake_module.vm = fake_gl.vm
 fake_module.message = fake_gl.message
-fake_module.get_contract_at = fake_gl.get_contract_at
 fake_gl.u256 = int
 fake_module.bigint = int
 fake_module.TreeMap = TreeMap

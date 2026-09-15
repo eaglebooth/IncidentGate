@@ -316,20 +316,21 @@ class IncidentGate(gl.contract.Contract):
     policy_keys: gl.storage.TreeMap[str, bool]
     intent_keys: gl.storage.TreeMap[str, bool]
     used_nonces: gl.storage.TreeMap[str, bool]
+    receipts: gl.storage.TreeMap[str, str]
+    volume: gl.storage.TreeMap[str, u256]
     policy_count: u256
     intent_count: u256
     execution_count: u256
-    guarded_target: str
+    protocol_owner: str
+    paused: bool
     target_revision: u256
 
-    def __init__(self, guarded_target: str):
-        target = _address(guarded_target)
-        if not target:
-            raise gl.vm.UserError("INVALID_GUARDED_TARGET")
+    def __init__(self):
         self.policy_count = u256(0)
         self.intent_count = u256(0)
         self.execution_count = u256(0)
-        self.guarded_target = target
+        self.protocol_owner = gl.message.sender_address.as_hex.lower()
+        self.paused = False
         self.target_revision = u256(0)
 
     def _now(self) -> int:
@@ -360,7 +361,7 @@ class IncidentGate(gl.contract.Contract):
         if int(amount_limit) <= 0 or int(amount_limit) > MAX_AMOUNT or not 30 <= int(ttl_seconds) <= MAX_AUTH_TTL:
             raise gl.vm.UserError("INVALID_POLICY_LIMIT")
         self.policies[pid] = Policy(caller, clean_agent, caller, facts[0], url, adapter[1],
-                                    facts[1], facts[2], clean_destination, self.guarded_target, self.target_revision, facts[3], facts[4].upper(),
+                                    facts[1], facts[2], clean_destination, gl.message.contract_address.as_hex.lower(), self.target_revision, facts[3], facts[4].upper(),
                                     facts[5].upper(), u256(int(amount_limit)), u256(int(ttl_seconds)), u256(1), True)
         self.policy_keys[pid] = True
         self.policy_count += u256(1)
@@ -410,7 +411,7 @@ class IncidentGate(gl.contract.Contract):
         operation_digest = hashlib.sha256(operation.encode("utf-8")).hexdigest()
         self.intents[iid] = Intent(policy.owner, caller, policy.assessor, policy_id, policy.revision, policy.destination,
             policy.chain_ref, policy.asset, policy.action, u256(int(amount)), clean_nonce,
-            self.guarded_target, GOVERNED_SELECTOR, payload_digest, u256(0), self.target_revision,
+            gl.message.contract_address.as_hex.lower(), GOVERNED_SELECTOR, payload_digest, u256(0), self.target_revision,
             operation_digest, u256(0), u256(0), u256(0), u256(0), "CREATED", "UNASSESSED",
             "", u256(0), "", u256(0), False, "Awaiting independent incident relevance assessment.")
         self.intent_keys[iid] = True
@@ -501,7 +502,7 @@ class IncidentGate(gl.contract.Contract):
             except Exception:
                 return False
 
-        raw = gl.vm.run_nondet_unsafe(evaluate, validate)
+        raw = gl.vm.run_nondet(evaluate, validate)
         try:
             result = json.loads(raw)
         except Exception:
@@ -554,6 +555,8 @@ class IncidentGate(gl.contract.Contract):
         policy = self.policies[str(intent.policy_id)]
         if gl.message.sender_address.as_hex.lower() != intent.agent:
             raise gl.vm.UserError("AGENT_ONLY")
+        if self.paused:
+            raise gl.vm.UserError("PROTOCOL_PAUSED")
         if intent.status != "AUTHORIZED" or intent.consumed or self._now() >= int(intent.expires_at):
             raise gl.vm.UserError("AUTHORIZATION_NOT_ACTIVE")
         if not policy.active or int(policy.revision) != int(intent.policy_revision):
@@ -562,60 +565,43 @@ class IncidentGate(gl.contract.Contract):
             raise gl.vm.UserError("AUTHORIZATION_TARGET_STALE")
         if str(expected_authorization_digest).lower() != str(intent.authorization_digest):
             raise gl.vm.UserError("AUTHORIZATION_DIGEST_MISMATCH")
-        intent.status = "EXECUTION_QUEUED"
-        intent.reason = "Exact governed operation queued for finalized GuardedTarget execution."
-        self._emit_execution(intent_id, intent)
-
-    def _emit_execution(self, intent_id: str, intent: Intent) -> None:
-        gl.get_contract_at(Address(self.guarded_target)).emit(on="finalized").apply_authorized(
-            intent_id, str(intent.authorization_digest), str(intent.operation_digest), str(intent.agent),
-            str(intent.destination), str(intent.chain_ref), str(intent.asset), str(intent.action),
-            int(intent.amount), int(intent.target_revision), int(intent.expires_at))
-
-    @gl.public.write
-    def retry_execution(self, intent_id: str) -> None:
-        if intent_id not in self.intent_keys:
-            raise gl.vm.UserError("INTENT_NOT_FOUND")
-        intent = self.intents[intent_id]
-        if gl.message.sender_address.as_hex.lower() != intent.agent:
-            raise gl.vm.UserError("AGENT_ONLY")
-        if intent.status != "EXECUTION_QUEUED" or intent.consumed:
-            raise gl.vm.UserError("EXECUTION_NOT_QUEUED")
-        if self._now() >= int(intent.expires_at):
-            raise gl.vm.UserError("QUEUED_AUTHORIZATION_EXPIRED")
-        if int(intent.target_revision) != int(self.target_revision):
-            raise gl.vm.UserError("QUEUED_TARGET_STALE")
-        self._emit_execution(intent_id, intent)
-
-    @gl.public.write
-    def sync_target_revision(self, revision: int) -> None:
-        if gl.message.sender_address.as_hex.lower() != self.guarded_target:
-            raise gl.vm.UserError("GUARDED_TARGET_ONLY")
-        if int(revision) <= int(self.target_revision):
-            raise gl.vm.UserError("INVALID_TARGET_REVISION")
-        self.target_revision = u256(int(revision))
-
-    @gl.public.write
-    def confirm_execution(self, intent_id: str, expected_authorization_digest: str) -> None:
-        if intent_id not in self.intent_keys:
-            raise gl.vm.UserError("INTENT_NOT_FOUND")
-        intent = self.intents[intent_id]
-        caller = gl.message.sender_address.as_hex.lower()
-        if caller != intent.target_contract:
-            raise gl.vm.UserError("GUARDED_TARGET_ONLY")
-        if intent.status != "EXECUTION_QUEUED" or intent.consumed:
-            raise gl.vm.UserError("EXECUTION_NOT_QUEUED")
-        expected = str(expected_authorization_digest or "").strip().lower()
-        if expected != str(intent.authorization_digest):
-            raise gl.vm.UserError("AUTHORIZATION_DIGEST_MISMATCH")
         intent.consumed = True
         intent.status = "EXECUTED"
-        intent.reason = "GuardedTarget confirmed the exact governed operation was applied."
+        intent.reason = "Authorization consumed and exact governed operation recorded atomically."
+        self.receipts[intent_id] = _canonical({"authorization_digest": str(intent.authorization_digest),
+            "operation_digest": str(intent.operation_digest), "agent": str(intent.agent),
+            "destination": str(intent.destination), "chain_ref": str(intent.chain_ref),
+            "asset": str(intent.asset), "action": str(intent.action), "amount": int(intent.amount),
+            "operation_revision": int(intent.target_revision)})
+        volume_key = str(intent.chain_ref) + ":" + str(intent.asset) + ":" + str(intent.action)
+        previous = int(self.volume[volume_key]) if volume_key in self.volume else 0
+        self.volume[volume_key] = u256(previous + int(intent.amount))
         self.execution_count += u256(1)
+
+    @gl.public.write
+    def set_paused(self, paused: bool) -> None:
+        if gl.message.sender_address.as_hex.lower() != self.protocol_owner:
+            raise gl.vm.UserError("PROTOCOL_OWNER_ONLY")
+        next_value = bool(paused)
+        if next_value == self.paused:
+            raise gl.vm.UserError("PAUSE_STATE_UNCHANGED")
+        self.paused = next_value
+        self.target_revision += u256(1)
 
     @gl.public.view
     def get_contract_version(self) -> dict[str, typing.Any]:
-        return {"name": "IncidentGate", "version": 9, "schema": "autonomous-incident-gate-v9-consensus-v06"}
+        return {"name": "IncidentGate", "version": 12, "schema": "autonomous-incident-gate-v12-atomic-sdk-v03"}
+
+    @gl.public.view
+    def get_execution_receipt(self, intent_id: str) -> dict[str, typing.Any]:
+        if intent_id not in self.receipts:
+            return {"exists": False}
+        return {"exists": True, "receipt": self.receipts[intent_id]}
+
+    @gl.public.view
+    def get_volume(self, chain_ref: str, asset: str, action: str) -> str:
+        key = str(chain_ref).upper() + ":" + str(asset).upper() + ":" + str(action).upper()
+        return str(self.volume[key]) if key in self.volume else "0"
 
     @gl.public.view
     def get_policy(self, policy_id: str) -> dict[str, typing.Any]:
@@ -649,4 +635,4 @@ class IncidentGate(gl.contract.Contract):
     @gl.public.view
     def get_stats(self) -> dict[str, str]:
         return {"policies": str(self.policy_count), "intents": str(self.intent_count), "executions": str(self.execution_count),
-                "target_revision": str(self.target_revision), "guarded_target": self.guarded_target}
+                "target_revision": str(self.target_revision), "paused": str(self.paused), "protocol_owner": self.protocol_owner}

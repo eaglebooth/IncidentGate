@@ -1,12 +1,12 @@
 import { createClient } from "genlayer-js";
-import { studioDevnet } from "genlayer-js/chains";
+import { studioNext } from "./network.mjs";
 
 const hashes = process.argv.slice(2);
 if (!hashes.length || hashes.some(hash => !/^0x[0-9a-fA-F]{64}$/.test(hash))) {
   throw new Error("Pass one or more transaction hashes");
 }
 
-const client = createClient({ chain: studioDevnet });
+const client = createClient({ chain: studioNext });
 for (const hash of hashes) {
   const tx = await client.getTransaction({ hash });
   const consensus = tx?.consensus_data ?? {};
@@ -34,4 +34,12 @@ for (const hash of hashes) {
     decodedData: tx?.decodedData ?? tx?.decoded_data,
     executions,
   }, null, 2)}\n`);
+  if (process.env.DEBUG_TRACE === "1") {
+    try {
+      const trace = await client.debugTraceTransaction({ hash });
+      process.stdout.write(`TRACE ${JSON.stringify(trace, null, 2)}\n`);
+    } catch (error) {
+      process.stdout.write(`TRACE_UNAVAILABLE ${error instanceof Error ? error.message : "unknown error"}\n`);
+    }
+  }
 }

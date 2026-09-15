@@ -2,12 +2,12 @@
 
 **A GenLayer-powered semantic circuit breaker for autonomous treasuries and transaction agents, with two pre-audited live-source adapters and a contract-enforced operation catalog.**
 
-V9 preserves the reviewed Coinbase/Kraken boundary and 22 operation profiles while migrating the application to Studio Next Consensus v0.6 with explicit fee quotation and strict execution-result finality. The contract—not the frontend—rejects every unlisted `(authority, scope, asset, action)` tuple.
+V12 preserves the reviewed Coinbase/Kraken boundary and 22 operation profiles while making authorization consumption, receipt creation and governed-volume accounting one atomic state transition. The contract—not the frontend—rejects every unlisted `(authority, scope, asset, action)` tuple.
 
 IncidentGate evaluates whether current authoritative incident disclosures materially affect one exact proposed operation. GenLayer validators independently retrieve the registered source and agree on the bounded semantic relation. Deterministic contract logic alone decides whether to issue a short-lived, single-use execution capability.
 
 **Live application:** [incidentgate.vercel.app](https://incidentgate.vercel.app)  
-**Historical V8 evidence:** [judge-facing E2E ledger](docs/E2E_EVIDENCE.md). V9 is deployed and reciprocally bound on Studio Next; adversarial and happy-path evidence collection is still in progress.
+**Studio Next V12 evidence:** [judge-facing live E2E ledger](docs/V12_E2E_EVIDENCE.md). V9–V11 are retained as migration evidence. V11 proved the semantic path but Studio Next did not finalize the cross-contract child-message consensus; V12 removes that network-dependent boundary and is live-verified on chain `61997`.
 
 ## Why GenLayer
 
@@ -22,9 +22,7 @@ AFFECTS_OPERATION | DOES_NOT_AFFECT_OPERATION | UNCERTAIN
         ↓ deterministic policy gates
 BLOCK | short-lived single-use authorization
         ↓ exact digest + nonce + expiry
-TARGET APPLIED | REVERT
-        ↓ finalized target confirmation
-EXECUTED | CONFIRMATION PENDING
+ATOMIC RECEIPT + VOLUME | REVERT
 ```
 
 ## Production source profile
@@ -49,7 +47,7 @@ Kraken adapter:
 
 The URL is not supplied per intent. It is exactly registered by the contract. The agent supplies only the operation it wants authorized.
 
-## V9 reviewed operation catalog
+## V12 reviewed operation catalog
 
 `PLATFORM_INTERNAL` means an exchange-side BUY, SELL, or TRADE. It is deliberately not labeled as a blockchain. DEPOSIT and WITHDRAW profiles bind an actual network.
 
@@ -66,7 +64,7 @@ The URL is not supplied per intent. It is exactly registered by the contract. Th
 
 This catalog is a reviewed policy surface, not a claim that every listed operation is continuously supported by an exchange. Adding an asset, action, network, or new authority requires a new audited contract release.
 
-The `IncidentGate` constructor pins one `GuardedTarget`, and that target can bind back to the Gate exactly once. The production frontend pins the same pair through environment configuration; visitors and policy owners cannot substitute a target. Because the current GenVM API exposes no contract-code hash primitive, reviewers must still verify that the two published deployment addresses correspond to the reviewed sources.
+V12 is intentionally a single contract. Its own address is bound into each operation digest. A successful `execute_intent` atomically consumes the authorization, stores a canonical receipt and increments the route volume. This is a meaningful on-chain consequence, but it is not custody and does not claim to execute an order at Coinbase or Kraken.
 
 ### Epistemic boundary
 
@@ -80,10 +78,10 @@ An empty, successfully authenticated unresolved-incident feed means only that no
 4. Validators independently retrieve and structurally validate the live feed, then GenLayer adjudicates applicability.
 5. Any relevant or uncertain disclosure blocks. Source/schema/identity failure also blocks.
 6. Only `DOES_NOT_AFFECT_OPERATION` plus every deterministic prerequisite creates an authorization.
-7. The same agent calls `IncidentGate.execute_intent`. Gate rechecks caller, expiry, policy revision and authorization digest, marks the intent `EXECUTION_QUEUED`, then emits the exact operation to its constructor-pinned target after finalization.
-8. `GuardedTarget` accepts messages only from its one-time-bound Gate. It validates the target revision, applies the operation once, stores an immutable receipt, and emits confirmation to Gate. Duplicate delivery is idempotent; `retry_execution` and `retry_confirmation` recover delayed messages without repeating the target operation. Every pause/unpause increments a target revision, invalidating older queued operations.
+7. The same agent calls `IncidentGate.execute_intent`. Gate rechecks caller, pause state, expiry, policy revision, operation revision and authorization digest.
+8. In that same transaction it consumes the capability, stores the exact canonical receipt, increments route volume and marks the intent `EXECUTED`. Replay reverts. Emergency pause/unpause increments the operation revision and invalidates older intents.
 
-The Control Room includes policy registration, so a reviewer can complete the lifecycle after the one-time target/Gate binding. Register with the owner wallet and a distinct treasury-agent address; switch to the agent for create/schedule/execute and back to the owner for assessment. `EXECUTION_QUEUED` is an honest eventual-delivery state, not a claim that both contracts changed atomically.
+The Control Room includes the full lifecycle. Register with the owner wallet and a distinct treasury-agent address; switch to the agent for create/schedule/execute and back to the owner for assessment.
 
 ### Consensus retry limitation
 
@@ -99,11 +97,11 @@ npm run build
 npm run dev
 ```
 
-V9 deployment order is deliberate: deploy `GuardedTarget` with no arguments; deploy `IncidentGate` with the target address; then call `GuardedTarget.bind_incident_gate(gate)` once from the target owner. Never bind an unverified address because the binding cannot be replaced. Any previously bound target requires a fresh target/Gate pair.
+Deploy `contracts/incident_gate.py` once with no constructor arguments. There is no target deployment or binding step in V12.
 
 ## Required hackathon network: Studio Next
 
-IncidentGate V9 targets **Studio Next / Studio Devnet**, chain ID `61997`, RPC `https://studio-next.genlayer.com/api`. The old Studionet deployment on chain `61999` remains historical evidence only and is not the hackathon deployment.
+IncidentGate V12 targets **Studio Next**, chain ID `61997`, RPC `https://studio-next.genlayer.com/api`. The old Studionet deployment on chain `61999` remains historical evidence only and is not the hackathon deployment.
 
 Every frontend write uses `@genlayer/transaction-kit@0.1.0-rc.2` to obtain a live fee quote, submit the fee distribution, and require `FINISHED_WITH_RETURN` after finalization. The SDK is pinned to `genlayer-js@2.0.0-rc.1`.
 
@@ -116,11 +114,12 @@ Copy `.env.example` to `.env.local` after deployment. The hackathon frontend is 
 ## Repository evidence
 
 - [Historical V8 end-to-end evidence](docs/E2E_EVIDENCE.md)
-- [V9 Studio Next deployment gate](docs/STUDIO_NEXT_DEPLOYMENT.md)
+- [V12 Studio Next live end-to-end evidence](docs/V12_E2E_EVIDENCE.md)
+- [V12 Studio Next deployment gate](docs/STUDIO_NEXT_DEPLOYMENT.md)
 - [Source manifest](docs/SOURCE_MANIFEST.md)
 - [Threat model](docs/THREAT_MODEL.md)
 - [Verification record](docs/VERIFICATION.md)
 - [Pre-submission red-team checklist](docs/RED_TEAM_CHECKLIST.md)
 - [Contract source](contracts/incident_gate.py)
 
-Synthetic inputs in tests are regression fixtures only. They are not presented as authoritative live evidence. The linked V8 ledger remains explicitly historical. The V9 contract pair and finalized binding are recorded in [the Studio Next deployment gate](docs/STUDIO_NEXT_DEPLOYMENT.md); full verification will be claimed only after the live suite finalizes on chain `61997`.
+Synthetic inputs in tests are regression fixtures only. They are not presented as authoritative live evidence. Historical deployments remain explicitly historical. V12 live verification uses the user-owned Studio Next deployment, independent validator retrieval from both registered authorities, finalized readback, and linked transactions on chain `61997`.
