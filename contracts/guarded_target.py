@@ -1,6 +1,7 @@
-# v0.2.16
-# { "Depends": "py-genlayer:1jb45aa8ynh2a9c9xn3b7qqh8sm5q93hwfp7jqmwsfhh8jpz09h6" }
-from genlayer import *
+# v0.3.0
+# { "Depends": "py-genlayer:5jycge4q8k23462jtb0b9fyey1s9qz928sz2nbrd9mg4sxqg2qng" }
+import genlayer as gl
+from genlayer.types import *
 
 import json
 import time
@@ -13,29 +14,29 @@ def _address(value: str) -> str:
     return clean if all(c in "0123456789abcdef" for c in clean[2:]) else ""
 
 
-class GuardedTarget(gl.Contract):
+class GuardedTarget(gl.contract.Contract):
     owner: str
     incident_gate: str
     paused: bool
-    applied: TreeMap[str, bool]
-    receipts: TreeMap[str, str]
-    volume: TreeMap[str, bigint]
-    operation_count: bigint
-    pause_revision: bigint
+    applied: gl.storage.TreeMap[str, bool]
+    receipts: gl.storage.TreeMap[str, str]
+    volume: gl.storage.TreeMap[str, u256]
+    operation_count: u256
+    pause_revision: u256
 
     def __init__(self):
         self.owner = gl.message.sender_address.as_hex.lower()
         self.incident_gate = ""
         self.paused = False
-        self.operation_count = bigint(0)
-        self.pause_revision = bigint(0)
+        self.operation_count = u256(0)
+        self.pause_revision = u256(0)
 
     @gl.public.write
     def set_paused(self, paused: bool) -> None:
         if gl.message.sender_address.as_hex.lower() != self.owner:
             raise gl.vm.UserError("OWNER_ONLY")
         self.paused = bool(paused)
-        self.pause_revision += bigint(1)
+        self.pause_revision += u256(1)
         if self.incident_gate:
             gl.get_contract_at(Address(self.incident_gate)).emit(on="finalized").sync_target_revision(int(self.pause_revision))
 
@@ -61,11 +62,11 @@ class GuardedTarget(gl.Contract):
         key = chain_ref + ":" + asset + ":" + action
         self.applied[intent_id] = True
         current = int(self.volume[key]) if key in self.volume else 0
-        self.volume[key] = bigint(current + int(amount))
+        self.volume[key] = u256(current + int(amount))
         self.receipts[intent_id] = json.dumps({"operation_digest": operation_digest, "authorization_digest": authorization_digest, "destination": destination,
             "chain_ref": chain_ref, "asset": asset, "action": action, "amount": str(amount)},
             sort_keys=True, separators=(",", ":"))
-        self.operation_count += bigint(1)
+        self.operation_count += u256(1)
         gl.get_contract_at(Address(self.incident_gate)).emit(on="finalized").confirm_execution(intent_id, authorization_digest)
 
     @gl.public.write
@@ -77,7 +78,7 @@ class GuardedTarget(gl.Contract):
             intent_id, str(receipt["authorization_digest"]))
 
     @gl.public.view
-    def get_receipt(self, intent_id: str) -> dict[str, str | bool]:
+    def get_receipt(self, intent_id: str) -> dict:
         if intent_id not in self.applied:
             return {"exists": False}
         result = json.loads(self.receipts[intent_id])

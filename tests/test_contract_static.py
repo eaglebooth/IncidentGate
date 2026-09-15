@@ -9,8 +9,8 @@ SOURCE = (ROOT / "contracts" / "incident_gate.py").read_text(encoding="utf-8")
 def test_contract_is_valid_python_and_pins_runner():
     ast.parse(SOURCE)
     lines = SOURCE.splitlines()
-    assert lines[0] == "# v0.2.16"
-    assert "py-genlayer:1jb45aa8ynh2a9c9xn3b7qqh8sm5q93hwfp7jqmwsfhh8jpz09h6" in lines[1]
+    assert "py-genlayer:5jycge4q8k23462jtb0b9fyey1s9qz928sz2nbrd9mg4sxqg2qng" in "\n".join(lines[:2])
+    assert lines[2] == "import genlayer as gl"
 
 
 def test_intelligence_is_on_critical_path_but_does_not_authorize_directly():
@@ -41,8 +41,8 @@ def test_reviewed_operation_catalog_is_enforced_before_storage():
     assert "MOONBEAM:GLMR:WITHDRAW" in SOURCE
     assert "UNSUPPORTED_OPERATION_PROFILE" in register
     assert register.index("UNSUPPORTED_OPERATION_PROFILE") < register.index("self.policies[pid]")
-    assert '"version": 8' in SOURCE
-    assert "autonomous-incident-gate-v8-iso-offsets" in SOURCE
+    assert '"version": 9' in SOURCE
+    assert "autonomous-incident-gate-v9-consensus-v06" in SOURCE
 
 
 def test_nondeterministic_fetch_uses_plain_storage_snapshot():

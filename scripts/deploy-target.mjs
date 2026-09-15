@@ -1,6 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { createAccount, createClient } from "genlayer-js";
-import { studionet } from "genlayer-js/chains";
+import { studioDevnet } from "genlayer-js/chains";
 import { TransactionStatus } from "genlayer-js/types";
 
 async function readSecret() {
@@ -17,9 +17,10 @@ async function readSecret() {
 let secret = await readSecret();
 if (!secret) throw new Error("Pass deployer private key through stdin");
 const account = createAccount(secret.startsWith("0x") ? secret : `0x${secret}`); secret = "";
-const client = createClient({ chain: studionet, account });
+const client = createClient({ chain: studioDevnet, account });
 const code = await readFile(new URL("../contracts/guarded_target.py", import.meta.url), "utf8");
-const hash = await client.deployContract({ code, args: [] });
+const estimate = await client.estimateTransactionFees();
+const hash = await client.deployContract({ code, args: [], fees: { distribution: estimate.distribution, feeValue: estimate.feeValue } });
 process.stdout.write(`deployer: ${account.address}\ndeploy target: ${hash}\n`);
 const receipt = await client.waitForTransactionReceipt({ hash, status: TransactionStatus.FINALIZED, interval: 2000, retries: 300 });
 process.stdout.write(`target deploy finalized: ${JSON.stringify(receipt)}\n`);

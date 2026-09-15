@@ -1,12 +1,12 @@
 import { createClient } from "genlayer-js";
-import { studionet } from "genlayer-js/chains";
+import { studioDevnet } from "genlayer-js/chains";
 
 const hashes = process.argv.slice(2);
 if (!hashes.length || hashes.some(hash => !/^0x[0-9a-fA-F]{64}$/.test(hash))) {
   throw new Error("Pass one or more transaction hashes");
 }
 
-const client = createClient({ chain: studionet });
+const client = createClient({ chain: studioDevnet });
 for (const hash of hashes) {
   const tx = await client.getTransaction({ hash });
   const consensus = tx?.consensus_data ?? {};

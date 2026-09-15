@@ -8,7 +8,7 @@ import { connectedWallet, connectWallet, contractAddress, disconnectWallet, expl
 type IntentState = { exists: boolean; policy_id?: string; assessor?: string; asset?: string; action?: string; chain_ref?: string; amount?: string; status?: string; verdict?: string; target_contract?: string; function_selector?: string; calldata_digest?: string; call_value?: string; operation_digest?: string; authorization_digest?: string; evidence_digest?: string; assessment_not_before?: string; assessment_deadline?: string; expires_at?: string; consumed?: boolean; reason?: string };
 type Stats = { policies: string; intents: string; executions: string; target_revision?: string; guarded_target?: string };
 type ContractVersion = { name?: string; version?: number; schema?: string };
-const EXPECTED_SCHEMA = "autonomous-incident-gate-v8-iso-offsets";
+const EXPECTED_SCHEMA = "autonomous-incident-gate-v9-consensus-v06";
 
 type Route = { chain: string; asset: string; action: string };
 const ADAPTERS = {
@@ -85,14 +85,14 @@ export default function Home() {
       timer = setTimeout(refresh, 60000);
     };
     void refresh();
-    return () => { active = false; ++readSequence.current; clearTimeout(timer); };
+    return () => { active = false; clearTimeout(timer); };
   }, [intentId]);
 
   const verifyDeployment = useCallback(async () => {
     if (!isConfigured()) return false;
     const result = await readContract("get_contract_version");
     const version = result.success ? unwrap<ContractVersion>(result.data) : null;
-    const valid = version?.name === "IncidentGate" && version.version === 8 && version.schema === EXPECTED_SCHEMA;
+    const valid = version?.name === "IncidentGate" && version.version === 9 && version.schema === EXPECTED_SCHEMA;
     setDeploymentReady(valid);
     return valid;
   }, []);
@@ -103,7 +103,7 @@ export default function Home() {
     void readContract("get_contract_version").then(result => {
       if (!active) return;
       const version = result.success ? unwrap<ContractVersion>(result.data) : null;
-      setDeploymentReady(version?.name === "IncidentGate" && version.version === 8 && version.schema === EXPECTED_SCHEMA);
+      setDeploymentReady(version?.name === "IncidentGate" && version.version === 9 && version.schema === EXPECTED_SCHEMA);
     });
     return () => { active = false; };
   }, []);
@@ -123,7 +123,7 @@ export default function Home() {
     if (!isConfigured()) { setNotice("Preview mode — deploy the contract to enable live writes."); return; }
     setBusy("sync");
     const compatible = await verifyDeployment();
-    if (!compatible) { setNotice("V8 deployment pending — configured address does not match the ISO-offset-compatible handshake."); setBusy(""); return; }
+    if (!compatible) { setNotice("V9 deployment pending — configured address does not match the Studio Next / Consensus v0.6 handshake."); setBusy(""); return; }
     const sequence = ++readSequence.current;
     const [stateResult, statsResult] = await Promise.all([readContract("get_intent", [intentId]), readContract("get_stats")]);
     if (sequence !== readSequence.current) { setBusy(""); return; }
@@ -150,7 +150,7 @@ export default function Home() {
   }
 
   async function transact(label: string, method: string, args: unknown[], address?: string) {
-    if (!await verifyDeployment()) { setNotice("Write blocked: deploy and configure the V8 Gate before using this catalog."); return; }
+    if (!await verifyDeployment()) { setNotice("Write blocked: deploy and configure the V9 Gate on Studio Next before using this catalog."); return; }
     setBusy(label); setTxHash(""); setNotice(`${label} submitted. Waiting for consensus and execution…`);
     const result = await writeContract(method, args, address);
     if (result.hash) setTxHash(result.hash);
@@ -274,7 +274,7 @@ export default function Home() {
 
     <section id="evidence" className="evidence shell">
       <div className="section-number">04 — TRUST BOUNDARY</div>
-      <div className="evidence-grid"><div><h2>Two audited authorities.<br/>{ROUTE_COUNT} enforced routes.</h2><p>Coinbase and Kraken cover exchange-internal activity plus Ethereum, Base, Bitcoin, Solana and Moonbeam funding paths. Every combination is reviewed and enforced by V8; arbitrary assets, actions or networks revert before policy creation.</p><strong className="mvp-statement">Broad enough to prove utility. Narrow enough to audit.</strong></div><div className="source-stack">{Object.entries(ADAPTERS).map(([id,item])=><a className="source-card" href={item.source} target="_blank" rel="noreferrer" key={id}><span>AUDITED LIVE JSON · {id}</span><b>status.{item.name.toLowerCase()}.com</b><small>{item.routes.length} contract-approved routes</small><ExternalLink/></a>)}</div></div>
+      <div className="evidence-grid"><div><h2>Two audited authorities.<br/>{ROUTE_COUNT} enforced routes.</h2><p>Coinbase and Kraken cover exchange-internal activity plus Ethereum, Base, Bitcoin, Solana and Moonbeam funding paths. Every combination is reviewed and enforced by V9; arbitrary assets, actions or networks revert before policy creation.</p><strong className="mvp-statement">Broad enough to prove utility. Narrow enough to audit.</strong></div><div className="source-stack">{Object.entries(ADAPTERS).map(([id,item])=><a className="source-card" href={item.source} target="_blank" rel="noreferrer" key={id}><span>AUDITED LIVE JSON · {id}</span><b>status.{item.name.toLowerCase()}.com</b><small>{item.routes.length} contract-approved routes</small><ExternalLink/></a>)}</div></div>
       <div className="boundary marquee"><div className="marquee-track boundary-track">{[0, 1].map(copy => <div className="marquee-group boundary-group" aria-hidden={copy === 1} key={copy}>{CONTROLS.map(item => <div key={item}><Check/> {item}</div>)}</div>)}</div></div>
     </section>
 
@@ -289,6 +289,6 @@ export default function Home() {
       </div>
     </section>
 
-    <footer className="footer shell"><div className="brand"><Image src="/incidentgate-mark-v2.png" alt="" width={38} height={38}/><span>Incident<span className="brand-gate">Gate</span></span></div><p>Built for Agent Tank · Autonomous Protocols</p><div><span className="footer-network"><i/> {deploymentReady ? networkName : "V8 DEPLOYMENT PENDING"}</span><span>{stats.policies} policies</span><span>{stats.intents} intents</span><span>{stats.executions} executions</span>{deploymentReady && <span className="contract-links"><a href={explorerAddress()} target="_blank" rel="noreferrer">IncidentGate V8 <ExternalLink size={12}/></a><a href={explorerTargetAddress()} target="_blank" rel="noreferrer">GuardedTarget <ExternalLink size={12}/></a></span>}</div><small>{deploymentReady ? `Gate ${short(contractAddress())} · Target ${short(targetContract)}` : EXPECTED_SCHEMA}</small></footer>
+    <footer className="footer shell"><div className="brand"><Image src="/incidentgate-mark-v2.png" alt="" width={38} height={38}/><span>Incident<span className="brand-gate">Gate</span></span></div><p>Built for Agent Tank · Autonomous Protocols</p><div><span className="footer-network"><i/> {deploymentReady ? "STUDIO NEXT" : "V9 DEPLOYMENT PENDING"}</span><span>{stats.policies} policies</span><span>{stats.intents} intents</span><span>{stats.executions} executions</span>{deploymentReady && <span className="contract-links"><a href={explorerAddress()} target="_blank" rel="noreferrer">IncidentGate V9 <ExternalLink size={12}/></a><a href={explorerTargetAddress()} target="_blank" rel="noreferrer">GuardedTarget <ExternalLink size={12}/></a></span>}</div><small>{deploymentReady ? `Gate ${short(contractAddress())} · Target ${short(targetContract)} · ${networkName}` : EXPECTED_SCHEMA}</small></footer>
   </main>;
 }

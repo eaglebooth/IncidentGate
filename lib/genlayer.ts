@@ -1,37 +1,39 @@
-import { createClient } from "genlayer-js";
-import { localnet, studionet, testnetBradbury } from "genlayer-js/chains";
-import { TransactionStatus } from "genlayer-js/types";
-import { finalizedFailure } from "./finality";
+import { createTransactionKit, type SubmitInput } from "@genlayer/transaction-kit";
+import { GENLAYER_CHAIN, GENLAYER_NETWORK_NAME, GENLAYER_WALLET_NETWORK } from "./network";
 
-type NetworkName = "localnet" | "studionet" | "testnetBradbury";
 type EthereumProvider = {
   request: (args: { method: string; params?: unknown[] }) => Promise<unknown>;
   on?: (event: "accountsChanged", listener: (accounts: string[]) => void) => void;
   removeListener?: (event: "accountsChanged", listener: (accounts: string[]) => void) => void;
 };
 declare global { interface Window { ethereum?: EthereumProvider } }
-const network = (process.env.NEXT_PUBLIC_NETWORK as NetworkName) || "studionet";
-const chains = { localnet, studionet, testnetBradbury };
-type RuntimeClient = {
-  connect?: (name: NetworkName) => Promise<unknown>;
-  readContract: (args: { address: string; functionName: string; args: unknown[] }) => Promise<unknown>;
-  writeContract: (args: { address: string; functionName: string; args: unknown[]; value: bigint }) => Promise<string | { txId: string }>;
-  waitForTransactionReceipt: (args: { hash: `0x${string}`; status: string; interval?: number; retries?: number }) => Promise<Record<string, unknown>>;
-  getTransaction: (args: { hash: `0x${string}` }) => Promise<Record<string, unknown>>;
-};
 
 export type ChainResult = { success: boolean; data?: unknown; hash?: string; error?: string };
-export const networkName = network;
+export const networkName = GENLAYER_NETWORK_NAME;
 export const contractAddress = () => process.env.NEXT_PUBLIC_CONTRACT_ADDRESS || "0x0000000000000000000000000000000000000000";
 export const targetAddress = () => process.env.NEXT_PUBLIC_TARGET_ADDRESS || "0x0000000000000000000000000000000000000000";
 export const isConfigured = () => !/^0x0{40}$/i.test(contractAddress()) && !/^0x0{40}$/i.test(targetAddress());
-export const explorerAddress = () => `${process.env.NEXT_PUBLIC_EXPLORER_ADDRESS_BASE || "https://explorer-studio.genlayer.com/address/"}${contractAddress()}`;
-export const explorerTargetAddress = () => `${process.env.NEXT_PUBLIC_EXPLORER_ADDRESS_BASE || "https://explorer-studio.genlayer.com/address/"}${targetAddress()}`;
-export const explorerTx = (hash: string) => `${process.env.NEXT_PUBLIC_EXPLORER_TX_BASE || "https://explorer-studio.genlayer.com/tx/"}${hash}`;
+export const explorerAddress = () => `${process.env.NEXT_PUBLIC_EXPLORER_ADDRESS_BASE || "https://explorer-studio-dev.genlayer.com/address/"}${contractAddress()}`;
+export const explorerTargetAddress = () => `${process.env.NEXT_PUBLIC_EXPLORER_ADDRESS_BASE || "https://explorer-studio-dev.genlayer.com/address/"}${targetAddress()}`;
+export const explorerTx = (hash: string) => `${process.env.NEXT_PUBLIC_EXPLORER_TX_BASE || "https://explorer-studio-dev.genlayer.com/tx/"}${hash}`;
+
+async function ensureStudioNext(provider: EthereumProvider): Promise<void> {
+  const expected = GENLAYER_WALLET_NETWORK.chainId.toLowerCase();
+  const current = String(await provider.request({ method: "eth_chainId" })).toLowerCase();
+  if (current === expected) return;
+  try {
+    await provider.request({ method: "wallet_switchEthereumChain", params: [{ chainId: GENLAYER_WALLET_NETWORK.chainId }] });
+  } catch (error) {
+    const code = (error as { code?: number })?.code;
+    if (code !== 4902) throw error;
+    await provider.request({ method: "wallet_addEthereumChain", params: [GENLAYER_WALLET_NETWORK] });
+  }
+}
 
 export async function connectWallet(): Promise<ChainResult> {
   if (!window.ethereum) return { success: false, error: "Install or unlock an EVM wallet." };
   try {
+    await ensureStudioNext(window.ethereum);
     const accounts = await window.ethereum.request({ method: "eth_requestAccounts" }) as string[];
     return accounts[0] ? { success: true, data: accounts[0] } : { success: false, error: "No account selected." };
   } catch (error) { return { success: false, error: error instanceof Error ? error.message : "Wallet connection failed." }; }
@@ -78,17 +80,20 @@ export async function writeContract(functionName: string, args: unknown[] = [], 
   if (!isConfigured()) return { success: false, error: "Deploy IncidentGate and configure its address first." };
   if (!window.ethereum) return { success: false, error: "Connect a wallet before writing." };
   try {
+    await ensureStudioNext(window.ethereum);
     const accounts = await window.ethereum.request({ method: "eth_requestAccounts" }) as string[];
     if (!accounts[0]) return { success: false, error: "No account selected." };
-    const client = createClient({ chain: chains[network] ?? studionet, provider: window.ethereum, account: accounts[0] as `0x${string}` }) as unknown as RuntimeClient;
-    if (client.connect) await client.connect(network);
-    const raw = await client.writeContract({ address, functionName, args, value: BigInt(0) });
-    const hash = typeof raw === "string" ? raw : raw.txId;
-    if (!/^0x[0-9a-f]{64}$/i.test(hash)) throw new Error("No transaction hash returned.");
-    await client.waitForTransactionReceipt({ hash: hash as `0x${string}`, status: TransactionStatus.FINALIZED, interval: 2000, retries: 600 });
-    const tx = await client.getTransaction({ hash: hash as `0x${string}` });
-    const failure = finalizedFailure(tx);
-    return failure ? { success: false, hash, error: failure } : { success: true, hash };
+    const kit = createTransactionKit({ chain: GENLAYER_CHAIN, provider: window.ethereum, account: accounts[0] as `0x${string}` });
+    const tx: SubmitInput = { kind: "write", address: address as `0x${string}`, method: functionName, args };
+    const quote = await kit.estimate({ preset: "standard" }, tx);
+    if (quote.verification.status === "mismatch") throw new Error("Fee policy changed while quoting. Refresh and try again.");
+    if (quote.verification.status === "unavailable" && !quote.gasless) throw new Error("Live Studio Next fee policy could not be verified.");
+    const submitted = await kit.submit(quote, tx);
+    const final = await kit.track(submitted.genlayerTxId, () => undefined, { until: "finalized" });
+    if (final.successful !== true || final.executionResultName !== "FINISHED_WITH_RETURN") {
+      return { success: false, hash: submitted.genlayerTxId, error: `Transaction finalized without a successful contract return (${final.executionResultName || final.statusName || "unknown"}).` };
+    }
+    return { success: true, hash: submitted.genlayerTxId };
   } catch (error) { return { success: false, error: error instanceof Error ? error.message : "Contract write failed." }; }
 }
 

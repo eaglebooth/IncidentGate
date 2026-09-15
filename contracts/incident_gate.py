@@ -1,6 +1,8 @@
-# v0.2.16
-# { "Depends": "py-genlayer:1jb45aa8ynh2a9c9xn3b7qqh8sm5q93hwfp7jqmwsfhh8jpz09h6" }
-from genlayer import *
+# v0.3.0
+# { "Depends": "py-genlayer:5jycge4q8k23462jtb0b9fyey1s9qz928sz2nbrd9mg4sxqg2qng" }
+import genlayer as gl
+from genlayer.storage import allow as allow_storage
+from genlayer.types import *
 
 import hashlib
 import json
@@ -54,13 +56,13 @@ class Policy:
     page_name: str
     destination: str
     target_contract: str
-    target_revision: bigint
+    target_revision: u256
     chain_ref: str
     asset: str
     action: str
-    amount_limit: bigint
-    ttl_seconds: bigint
-    revision: bigint
+    amount_limit: u256
+    ttl_seconds: u256
+    revision: u256
     active: bool
 
 
@@ -71,29 +73,29 @@ class Intent:
     agent: str
     assessor: str
     policy_id: str
-    policy_revision: bigint
+    policy_revision: u256
     destination: str
     chain_ref: str
     asset: str
     action: str
-    amount: bigint
+    amount: u256
     nonce: str
     target_contract: str
     function_selector: str
     calldata_digest: str
-    call_value: bigint
-    target_revision: bigint
+    call_value: u256
+    target_revision: u256
     operation_digest: str
-    scheduled_at: bigint
-    assessment_not_before: bigint
-    assessment_deadline: bigint
-    assessment_round: bigint
+    scheduled_at: u256
+    assessment_not_before: u256
+    assessment_deadline: u256
+    assessment_round: u256
     status: str
     verdict: str
     evidence_digest: str
-    evidence_observed_at: bigint
+    evidence_observed_at: u256
     authorization_digest: str
-    expires_at: bigint
+    expires_at: u256
     consumed: bool
     reason: str
 
@@ -308,27 +310,27 @@ def _fetch_feed(source: dict[str, str]) -> dict[str, typing.Any]:
         return {"error": "SOURCE_UNAVAILABLE"}
 
 
-class IncidentGate(gl.Contract):
-    policies: TreeMap[str, Policy]
-    intents: TreeMap[str, Intent]
-    policy_keys: TreeMap[str, bool]
-    intent_keys: TreeMap[str, bool]
-    used_nonces: TreeMap[str, bool]
-    policy_count: bigint
-    intent_count: bigint
-    execution_count: bigint
+class IncidentGate(gl.contract.Contract):
+    policies: gl.storage.TreeMap[str, Policy]
+    intents: gl.storage.TreeMap[str, Intent]
+    policy_keys: gl.storage.TreeMap[str, bool]
+    intent_keys: gl.storage.TreeMap[str, bool]
+    used_nonces: gl.storage.TreeMap[str, bool]
+    policy_count: u256
+    intent_count: u256
+    execution_count: u256
     guarded_target: str
-    target_revision: bigint
+    target_revision: u256
 
     def __init__(self, guarded_target: str):
         target = _address(guarded_target)
         if not target:
             raise gl.vm.UserError("INVALID_GUARDED_TARGET")
-        self.policy_count = bigint(0)
-        self.intent_count = bigint(0)
-        self.execution_count = bigint(0)
+        self.policy_count = u256(0)
+        self.intent_count = u256(0)
+        self.execution_count = u256(0)
         self.guarded_target = target
-        self.target_revision = bigint(0)
+        self.target_revision = u256(0)
 
     def _now(self) -> int:
         return int(time.time())
@@ -359,9 +361,9 @@ class IncidentGate(gl.Contract):
             raise gl.vm.UserError("INVALID_POLICY_LIMIT")
         self.policies[pid] = Policy(caller, clean_agent, caller, facts[0], url, adapter[1],
                                     facts[1], facts[2], clean_destination, self.guarded_target, self.target_revision, facts[3], facts[4].upper(),
-                                    facts[5].upper(), bigint(int(amount_limit)), bigint(int(ttl_seconds)), bigint(1), True)
+                                    facts[5].upper(), u256(int(amount_limit)), u256(int(ttl_seconds)), u256(1), True)
         self.policy_keys[pid] = True
-        self.policy_count += bigint(1)
+        self.policy_count += u256(1)
 
     @gl.public.write
     def rotate_policy(self, policy_id: str, active: bool, amount_limit: int, ttl_seconds: int) -> None:
@@ -373,10 +375,10 @@ class IncidentGate(gl.Contract):
         if int(amount_limit) <= 0 or int(amount_limit) > MAX_AMOUNT or not 30 <= int(ttl_seconds) <= MAX_AUTH_TTL:
             raise gl.vm.UserError("INVALID_POLICY_LIMIT")
         policy.active = bool(active)
-        policy.amount_limit = bigint(int(amount_limit))
-        policy.ttl_seconds = bigint(int(ttl_seconds))
+        policy.amount_limit = u256(int(amount_limit))
+        policy.ttl_seconds = u256(int(ttl_seconds))
         policy.target_revision = self.target_revision
-        policy.revision += bigint(1)
+        policy.revision += u256(1)
 
     @gl.public.write
     def create_intent(self, intent_id: str, policy_id: str, amount: int, nonce: str) -> None:
@@ -407,12 +409,12 @@ class IncidentGate(gl.Contract):
             "function_selector": GOVERNED_SELECTOR, "calldata_digest": payload_digest, "call_value": 0})
         operation_digest = hashlib.sha256(operation.encode("utf-8")).hexdigest()
         self.intents[iid] = Intent(policy.owner, caller, policy.assessor, policy_id, policy.revision, policy.destination,
-            policy.chain_ref, policy.asset, policy.action, bigint(int(amount)), clean_nonce,
-            self.guarded_target, GOVERNED_SELECTOR, payload_digest, bigint(0), self.target_revision,
-            operation_digest, bigint(0), bigint(0), bigint(0), bigint(0), "CREATED", "UNASSESSED",
-            "", bigint(0), "", bigint(0), False, "Awaiting independent incident relevance assessment.")
+            policy.chain_ref, policy.asset, policy.action, u256(int(amount)), clean_nonce,
+            self.guarded_target, GOVERNED_SELECTOR, payload_digest, u256(0), self.target_revision,
+            operation_digest, u256(0), u256(0), u256(0), u256(0), "CREATED", "UNASSESSED",
+            "", u256(0), "", u256(0), False, "Awaiting independent incident relevance assessment.")
         self.intent_keys[iid] = True
-        self.intent_count += bigint(1)
+        self.intent_count += u256(1)
 
     @gl.public.write
     def schedule_assessment(self, intent_id: str, window_seconds: int) -> None:
@@ -431,10 +433,10 @@ class IncidentGate(gl.Contract):
         if not MIN_ASSESSMENT_WINDOW <= int(window_seconds) <= MAX_ASSESSMENT_WINDOW:
             raise gl.vm.UserError("INVALID_ASSESSMENT_WINDOW")
         now = self._now()
-        intent.scheduled_at = bigint(now)
-        intent.assessment_not_before = bigint(now + ASSESSMENT_DELAY)
-        intent.assessment_deadline = bigint(now + ASSESSMENT_DELAY + int(window_seconds))
-        intent.assessment_round = bigint(1)
+        intent.scheduled_at = u256(now)
+        intent.assessment_not_before = u256(now + ASSESSMENT_DELAY)
+        intent.assessment_deadline = u256(now + ASSESSMENT_DELAY + int(window_seconds))
+        intent.assessment_round = u256(1)
         intent.status = "ASSESSMENT_SCHEDULED"
         intent.reason = "Assessment ticket locked for the independent policy assessor."
 
@@ -510,18 +512,18 @@ class IncidentGate(gl.Contract):
             intent.status = "SOURCE_FAILURE" if source_failure else "BLOCKED_UNCERTAIN"
             intent.verdict = "SOURCE_FAILURE" if source_failure else "UNCERTAIN"
             intent.reason = "Fail closed: " + str(result["error"])
-            intent.evidence_observed_at = bigint(now)
+            intent.evidence_observed_at = u256(now)
             return intent.status
         normalized = _normalize_model(result.get("result"))
         if not normalized:
             intent.status = "BLOCKED_UNCERTAIN"
             intent.verdict = "UNCERTAIN"
             intent.reason = "Fail closed: invalid consensus result."
-            intent.evidence_observed_at = bigint(now)
+            intent.evidence_observed_at = u256(now)
             return intent.status
         intent.verdict = normalized["verdict"]
         intent.evidence_digest = str(result["evidence_digest"])
-        intent.evidence_observed_at = bigint(now)
+        intent.evidence_observed_at = u256(now)
         intent.reason = normalized["reason"]
         if normalized["verdict"] == "AFFECTS_OPERATION":
             intent.status = "BLOCKED_INCIDENT"
@@ -530,7 +532,7 @@ class IncidentGate(gl.Contract):
             intent.status = "BLOCKED_UNCERTAIN"
             return intent.status
         expires = now + int(policy.ttl_seconds)
-        authorization = _canonical({"domain": "IncidentGate:authorization:v3", "intent_id": intent_id,
+        authorization = _canonical({"domain": "IncidentGate:authorization:v4", "intent_id": intent_id,
             "agent": str(intent.agent), "policy_id": str(intent.policy_id), "policy_revision": int(intent.policy_revision),
             "operation_digest": str(intent.operation_digest),
             "target_contract": str(intent.target_contract), "function_selector": str(intent.function_selector),
@@ -540,7 +542,7 @@ class IncidentGate(gl.Contract):
             "action": str(intent.action), "amount": int(intent.amount), "nonce": str(intent.nonce),
             "evidence_digest": str(intent.evidence_digest), "observed_at": now, "expires_at": expires})
         intent.authorization_digest = hashlib.sha256(authorization.encode("utf-8")).hexdigest()
-        intent.expires_at = bigint(expires)
+        intent.expires_at = u256(expires)
         intent.status = "AUTHORIZED"
         return intent.status
 
@@ -591,7 +593,7 @@ class IncidentGate(gl.Contract):
             raise gl.vm.UserError("GUARDED_TARGET_ONLY")
         if int(revision) <= int(self.target_revision):
             raise gl.vm.UserError("INVALID_TARGET_REVISION")
-        self.target_revision = bigint(int(revision))
+        self.target_revision = u256(int(revision))
 
     @gl.public.write
     def confirm_execution(self, intent_id: str, expected_authorization_digest: str) -> None:
@@ -609,11 +611,11 @@ class IncidentGate(gl.Contract):
         intent.consumed = True
         intent.status = "EXECUTED"
         intent.reason = "GuardedTarget confirmed the exact governed operation was applied."
-        self.execution_count += bigint(1)
+        self.execution_count += u256(1)
 
     @gl.public.view
     def get_contract_version(self) -> dict[str, typing.Any]:
-        return {"name": "IncidentGate", "version": 8, "schema": "autonomous-incident-gate-v8-iso-offsets"}
+        return {"name": "IncidentGate", "version": 9, "schema": "autonomous-incident-gate-v9-consensus-v06"}
 
     @gl.public.view
     def get_policy(self, policy_id: str) -> dict[str, typing.Any]:

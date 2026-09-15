@@ -1,9 +1,9 @@
 import { createClient } from "genlayer-js";
-import { studionet } from "genlayer-js/chains";
+import { GENLAYER_CHAIN } from "@/lib/network";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-const client = createClient({ chain: studionet });
+const client = createClient({ chain: GENLAYER_CHAIN });
 
 export async function GET(request: Request) {
   const url = new URL(request.url);
@@ -21,6 +21,6 @@ export async function GET(request: Request) {
     const data = await client.readContract({ address: address as `0x${string}`, functionName: method, args: method === "get_intent" ? [id] : [] });
     return Response.json({ success: true, data }, { headers: { "Cache-Control": "no-store" } });
   } catch (error) {
-    return Response.json({ success: false, error: error instanceof Error ? error.message : "StudioNet read unavailable." }, { status: 503, headers: { "Cache-Control": "no-store", "Retry-After": "60" } });
+    return Response.json({ success: false, error: error instanceof Error ? error.message : "Studio Next read unavailable." }, { status: 503, headers: { "Cache-Control": "no-store", "Retry-After": "60" } });
   }
 }

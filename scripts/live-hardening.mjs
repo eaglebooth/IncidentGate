@@ -1,5 +1,5 @@
 import { createAccount, createClient } from "genlayer-js";
-import { studionet } from "genlayer-js/chains";
+import { studioDevnet } from "genlayer-js/chains";
 import { TransactionStatus, transactionResultNumberToName } from "genlayer-js/types";
 
 const contract = process.env.INCIDENTGATE_CONTRACT_ADDRESS?.trim();
@@ -21,8 +21,8 @@ if (keys.length !== 2) throw new Error("Pass policy-owner and agent keys as two 
 const ownerAccount = createAccount(keys[0].startsWith("0x") ? keys[0] : `0x${keys[0]}`);
 const agentAccount = createAccount(keys[1].startsWith("0x") ? keys[1] : `0x${keys[1]}`);
 keys.fill("");
-const owner = createClient({ chain: studionet, account: ownerAccount });
-const agent = createClient({ chain: studionet, account: agentAccount });
+const owner = createClient({ chain: studioDevnet, account: ownerAccount });
+const agent = createClient({ chain: studioDevnet, account: agentAccount });
 
 function failure(tx, receipt) {
   const leader = tx?.consensus_data?.leader_receipt?.[0];
@@ -46,7 +46,8 @@ async function read(functionName, args = []) {
 
 const transactions = [];
 async function write(label, functionName, args, client, expectedError = "") {
-  const hash = await client.writeContract({ address: contract, functionName, args, value: 0n });
+  const estimate = await client.estimateTransactionFeesForWrite({ address: contract, functionName, args, value: 0n });
+  const hash = await client.writeContract({ address: contract, functionName, args, value: 0n, fees: { distribution: estimate.distribution, feeValue: estimate.feeValue } });
   transactions.push({ label, hash }); process.stdout.write(`${label}: ${hash}\n`);
   const receipt = await client.waitForTransactionReceipt({ hash, status: TransactionStatus.FINALIZED, interval: 2000, retries: 180 });
   let tx = receipt; try { tx = await client.getTransaction({ hash }); } catch {}
@@ -60,7 +61,7 @@ async function write(label, functionName, args, client, expectedError = "") {
 }
 
 const version = await read("get_contract_version");
-if (version.version !== 8 || version.schema !== "autonomous-incident-gate-v8-iso-offsets") throw new Error("V8 handshake failed");
+if (version.version !== 9 || version.schema !== "autonomous-incident-gate-v9-consensus-v06") throw new Error("V9 handshake failed");
 const tag = String(Date.now());
 const destination = ownerAccount.address;
 await write("catalog.reject", "register_policy", [`bad-${tag}`, agentAccount.address, "COINBASE", "https://status.coinbase.com/api/v2/incidents/unresolved.json", "kr0djjh0jyy9", "Coinbase", destination, "ETHEREUM", "USDC", "BUY", 1000000n, 30], owner, "UNSUPPORTED_OPERATION_PROFILE");

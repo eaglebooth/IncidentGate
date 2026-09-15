@@ -1,5 +1,5 @@
 import { createAccount, createClient } from "genlayer-js";
-import { studionet } from "genlayer-js/chains";
+import { studioDevnet } from "genlayer-js/chains";
 import { TransactionStatus, transactionResultNumberToName } from "genlayer-js/types";
 
 const contract = process.env.INCIDENTGATE_CONTRACT_ADDRESS?.trim();
@@ -24,8 +24,8 @@ const ownerAccount = createAccount(keys[0].startsWith("0x") ? keys[0] : `0x${key
 const agentAccount = createAccount(keys[1].startsWith("0x") ? keys[1] : `0x${keys[1]}`);
 keys.fill("");
 if (ownerAccount.address.toLowerCase() === agentAccount.address.toLowerCase()) throw new Error("Owner and agent must differ");
-const owner = createClient({ chain: studionet, account: ownerAccount });
-const agent = createClient({ chain: studionet, account: agentAccount });
+const owner = createClient({ chain: studioDevnet, account: ownerAccount });
+const agent = createClient({ chain: studioDevnet, account: agentAccount });
 
 function failure(tx, receipt) {
   const leader = tx?.consensus_data?.leader_receipt?.[0];
@@ -72,7 +72,9 @@ async function finalized(client, hash) {
 
 const transactions = [];
 async function write(label, functionName, args, client, expectedError = "", address = contract) {
-  const hash = await retry(`${label}.submit`, () => client.writeContract({ address, functionName, args, value: 0n }));
+  const estimate = await retry(`${label}.fees`, () => client.estimateTransactionFeesForWrite({ address, functionName, args, value: 0n }));
+  const fees = { distribution: estimate.distribution, feeValue: estimate.feeValue };
+  const hash = await retry(`${label}.submit`, () => client.writeContract({ address, functionName, args, value: 0n, fees }));
   transactions.push({ label, hash }); process.stdout.write(`${label}: ${hash}\n`);
   const { receipt, tx } = await finalized(client, hash); const rejected = failure(tx, receipt);
   if (expectedError) { if (!rejected.includes(expectedError)) throw new Error(`${label}: expected ${expectedError}, got ${rejected || "success"}`); process.stdout.write(`${label}: FINALIZED ROLLBACK ${expectedError}\n`); return hash; }
@@ -81,7 +83,7 @@ async function write(label, functionName, args, client, expectedError = "", addr
 }
 
 const version = await read("get_contract_version");
-if (version.name !== "IncidentGate" || version.version !== 8 || version.schema !== "autonomous-incident-gate-v8-iso-offsets") throw new Error("Contract handshake failed");
+if (version.name !== "IncidentGate" || version.version !== 9 || version.schema !== "autonomous-incident-gate-v9-consensus-v06") throw new Error("Contract handshake failed");
 const initialStats = await read("get_stats");
 if (String(initialStats.guarded_target).toLowerCase() !== targetContract.toLowerCase()) throw new Error("IncidentGate constructor target mismatch");
 const targetStatus = await readTarget("get_status");
@@ -123,7 +125,7 @@ await write("coinbase.schedule", "schedule_assessment", [coinbaseIntent, 300], a
 await waitUntilAssessmentReady(coinbaseIntent);
 await write("coinbase.assess", "assess_intent", [coinbaseIntent], owner);
 let coinbaseState = await read("get_intent", [coinbaseIntent]);
-if (coinbaseState.status === "SOURCE_FAILURE") throw new Error(`V8 Coinbase regression failed: ${coinbaseState.reason}`);
+if (coinbaseState.status === "SOURCE_FAILURE") throw new Error(`V9 Coinbase regression failed: ${coinbaseState.reason}`);
 if (coinbaseState.status === "AUTHORIZED") {
   await write("coinbase.mutatedDigest", "execute_intent", [coinbaseIntent, "0".repeat(64)], agent, "AUTHORIZATION_DIGEST_MISMATCH");
   await write("coinbase.queueExecution", "execute_intent", [coinbaseIntent, coinbaseState.authorization_digest], agent);
@@ -162,4 +164,4 @@ if (coinbaseState.authorization_digest) {
   if (coinbaseState.status !== "EXECUTED") throw new Error("GuardedTarget confirmation did not finalize on IncidentGate");
   await write("coinbase.replay", "execute_intent", [coinbaseIntent, coinbaseState.authorization_digest], agent, "AUTHORIZATION_NOT_ACTIVE");
 }
-process.stdout.write(`LIVE_SUITE_COMPLETE ${JSON.stringify({ contract, targetContract, network: "studionet", owner: ownerAccount.address, agent: agentAccount.address, policies: { coinbasePolicy, krakenPolicy }, states: { coinbase: coinbaseState, kraken: finalKraken }, targetReceipt, stats, transactions }, null, 2)}\n`);
+process.stdout.write(`LIVE_SUITE_COMPLETE ${JSON.stringify({ contract, targetContract, network: "studioDevnet", chainId: 61997, owner: ownerAccount.address, agent: agentAccount.address, policies: { coinbasePolicy, krakenPolicy }, states: { coinbase: coinbaseState, kraken: finalKraken }, targetReceipt, stats, transactions }, null, 2)}\n`);

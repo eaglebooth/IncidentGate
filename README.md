@@ -2,12 +2,12 @@
 
 **A GenLayer-powered semantic circuit breaker for autonomous treasuries and transaction agents, with two pre-audited live-source adapters and a contract-enforced operation catalog.**
 
-V8 broadens the product without weakening its boundary: Coinbase and Kraken remain the only fixed authorities, while 22 reviewed operation profiles cover exchange-internal activity and five network scopes. The contract—not the frontend—rejects every unlisted `(authority, scope, asset, action)` tuple. V8 also normalizes Statuspage timestamps carrying either `Z` or an explicit UTC offset before lifecycle comparison.
+V9 preserves the reviewed Coinbase/Kraken boundary and 22 operation profiles while migrating the application to Studio Next Consensus v0.6 with explicit fee quotation and strict execution-result finality. The contract—not the frontend—rejects every unlisted `(authority, scope, asset, action)` tuple.
 
 IncidentGate evaluates whether current authoritative incident disclosures materially affect one exact proposed operation. GenLayer validators independently retrieve the registered source and agree on the bounded semantic relation. Deterministic contract logic alone decides whether to issue a short-lived, single-use execution capability.
 
 **Live application:** [incidentgate.vercel.app](https://incidentgate.vercel.app)  
-**V8 evidence:** [judge-facing E2E ledger](docs/E2E_EVIDENCE.md)
+**Historical V8 evidence:** [judge-facing E2E ledger](docs/E2E_EVIDENCE.md). V9 is deployed and reciprocally bound on Studio Next; adversarial and happy-path evidence collection is still in progress.
 
 ## Why GenLayer
 
@@ -49,7 +49,7 @@ Kraken adapter:
 
 The URL is not supplied per intent. It is exactly registered by the contract. The agent supplies only the operation it wants authorized.
 
-## V8 reviewed operation catalog
+## V9 reviewed operation catalog
 
 `PLATFORM_INTERNAL` means an exchange-side BUY, SELL, or TRADE. It is deliberately not labeled as a blockchain. DEPOSIT and WITHDRAW profiles bind an actual network.
 
@@ -99,19 +99,28 @@ npm run build
 npm run dev
 ```
 
-V8 deployment order is deliberate: deploy `GuardedTarget` with no arguments; deploy `IncidentGate` with the target address; then call `GuardedTarget.bind_incident_gate(gate)` once from the target owner. Never bind an unverified address because the binding cannot be replaced. A GuardedTarget already bound to V7 cannot be rebound; V8 therefore requires a fresh target/Gate pair.
+V9 deployment order is deliberate: deploy `GuardedTarget` with no arguments; deploy `IncidentGate` with the target address; then call `GuardedTarget.bind_incident_gate(gate)` once from the target owner. Never bind an unverified address because the binding cannot be replaced. Any previously bound target requires a fresh target/Gate pair.
+
+## Required hackathon network: Studio Next
+
+IncidentGate V9 targets **Studio Next / Studio Devnet**, chain ID `61997`, RPC `https://studio-next.genlayer.com/api`. The old Studionet deployment on chain `61999` remains historical evidence only and is not the hackathon deployment.
+
+Every frontend write uses `@genlayer/transaction-kit@0.1.0-rc.2` to obtain a live fee quote, submit the fee distribution, and require `FINISHED_WITH_RETURN` after finalization. The SDK is pinned to `genlayer-js@2.0.0-rc.1`.
+
+Deployment order and the exact constructor/binding checks are in [`docs/STUDIO_NEXT_DEPLOYMENT.md`](docs/STUDIO_NEXT_DEPLOYMENT.md).
 
 ## Environment
 
-Copy `.env.example` to `.env.local` after deployment. The app supports `localnet`, `studionet`, and `testnetBradbury`. Never label Studio-dev chain `61997` as Studionet (`61999`); deployment records must state the exact network used.
+Copy `.env.example` to `.env.local` after deployment. The hackathon frontend is pinned to Studio Next (`studioDevnet`, chain `61997`); it deliberately does not fall back to Studionet `61999`.
 
 ## Repository evidence
 
-- [V8 end-to-end evidence — judge quick path](docs/E2E_EVIDENCE.md)
+- [Historical V8 end-to-end evidence](docs/E2E_EVIDENCE.md)
+- [V9 Studio Next deployment gate](docs/STUDIO_NEXT_DEPLOYMENT.md)
 - [Source manifest](docs/SOURCE_MANIFEST.md)
 - [Threat model](docs/THREAT_MODEL.md)
 - [Verification record](docs/VERIFICATION.md)
 - [Pre-submission red-team checklist](docs/RED_TEAM_CHECKLIST.md)
 - [Contract source](contracts/incident_gate.py)
 
-Synthetic inputs in tests are regression fixtures only. They are not presented as authoritative live evidence. The linked V8 ledger records the user-deployed release and finalized StudioNet transactions separately from local-only adversarial coverage.
+Synthetic inputs in tests are regression fixtures only. They are not presented as authoritative live evidence. The linked V8 ledger remains explicitly historical. The V9 contract pair and finalized binding are recorded in [the Studio Next deployment gate](docs/STUDIO_NEXT_DEPLOYMENT.md); full verification will be claimed only after the live suite finalizes on chain `61997`.

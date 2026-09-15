@@ -128,14 +128,32 @@ class FakeVm:
         return raw
 
 
-fake_gl = types.SimpleNamespace(Contract=object, public=types.SimpleNamespace(write=Decorator(), view=Decorator()),
-    vm=FakeVm, message=Message(), nondet=FakeNondet, get_contract_at=FakeContractApi.get_at)
+fake_gl = types.SimpleNamespace(contract=types.SimpleNamespace(Contract=object), storage=types.SimpleNamespace(TreeMap=TreeMap),
+    public=types.SimpleNamespace(write=Decorator(), view=Decorator()), vm=FakeVm, message=Message(),
+    nondet=FakeNondet, get_contract_at=FakeContractApi.get_at)
 fake_module = types.ModuleType("genlayer")
 fake_module.gl = fake_gl
+fake_module.u256 = int
+fake_module.contract = fake_gl.contract
+fake_module.storage = fake_gl.storage
+fake_module.public = fake_gl.public
+fake_module.vm = fake_gl.vm
+fake_module.message = fake_gl.message
+fake_module.nondet = fake_gl.nondet
+fake_module.get_contract_at = fake_gl.get_contract_at
+fake_gl.u256 = int
 fake_module.bigint = int
 fake_module.TreeMap = TreeMap
 fake_module.allow_storage = Decorator()
 fake_module.Address = FakeAddress
+fake_storage = types.ModuleType("genlayer.storage")
+fake_storage.allow = Decorator()
+fake_types = types.ModuleType("genlayer.types")
+fake_types.bigint = int
+fake_types.u256 = int
+fake_types.Address = FakeAddress
+sys.modules["genlayer.storage"] = fake_storage
+sys.modules["genlayer.types"] = fake_types
 sys.modules["genlayer"] = fake_module
 spec = importlib.util.spec_from_file_location("incident_gate_runtime", CONTRACT_PATH)
 module = importlib.util.module_from_spec(spec)

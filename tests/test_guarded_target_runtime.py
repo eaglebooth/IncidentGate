@@ -57,15 +57,28 @@ class FakeProxy:
         return FakeEmitter()
 
 
-fake_gl = types.SimpleNamespace(Contract=object, public=types.SimpleNamespace(write=Decorator(), view=Decorator()),
+fake_gl = types.SimpleNamespace(contract=types.SimpleNamespace(Contract=object), storage=types.SimpleNamespace(TreeMap=TreeMap), public=types.SimpleNamespace(write=Decorator(), view=Decorator()),
                                 vm=types.SimpleNamespace(UserError=UserError),
                                 message=types.SimpleNamespace(sender_address=sender, contract_address=types.SimpleNamespace(as_hex=TARGET)),
                                 get_contract_at=lambda _address: FakeProxy())
 fake_module = types.ModuleType("genlayer")
 fake_module.gl = fake_gl
+fake_module.u256 = int
+fake_module.contract = fake_gl.contract
+fake_module.storage = fake_gl.storage
+fake_module.public = fake_gl.public
+fake_module.vm = fake_gl.vm
+fake_module.message = fake_gl.message
+fake_module.get_contract_at = fake_gl.get_contract_at
+fake_gl.u256 = int
 fake_module.bigint = int
 fake_module.TreeMap = TreeMap
 fake_module.Address = lambda value: value
+fake_types = types.ModuleType("genlayer.types")
+fake_types.bigint = int
+fake_types.u256 = int
+fake_types.Address = lambda value: value
+sys.modules["genlayer.types"] = fake_types
 sys.modules["genlayer"] = fake_module
 spec = importlib.util.spec_from_file_location("guarded_target_runtime", SOURCE)
 module = importlib.util.module_from_spec(spec)

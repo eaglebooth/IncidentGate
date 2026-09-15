@@ -1,5 +1,5 @@
 import { createAccount, createClient } from "genlayer-js";
-import { studionet } from "genlayer-js/chains";
+import { studioDevnet } from "genlayer-js/chains";
 import { TransactionStatus } from "genlayer-js/types";
 
 const gate = process.env.INCIDENTGATE_CONTRACT_ADDRESS?.trim();
@@ -21,8 +21,10 @@ async function readSecret() {
 let secret = await readSecret();
 if (!secret) throw new Error("Pass target-owner private key through stdin");
 const account = createAccount(secret.startsWith("0x") ? secret : `0x${secret}`); secret = "";
-const client = createClient({ chain: studionet, account });
-const hash = await client.writeContract({ address: target, functionName: "bind_incident_gate", args: [gate] });
+const client = createClient({ chain: studioDevnet, account });
+const args = [gate];
+const estimate = await client.estimateTransactionFeesForWrite({ address: target, functionName: "bind_incident_gate", args });
+const hash = await client.writeContract({ address: target, functionName: "bind_incident_gate", args, fees: { distribution: estimate.distribution, feeValue: estimate.feeValue } });
 process.stdout.write(`owner: ${account.address}\nbind: ${hash}\n`);
 const receipt = await client.waitForTransactionReceipt({ hash, status: TransactionStatus.FINALIZED, interval: 2000, retries: 300 });
 process.stdout.write(`bind finalized: ${JSON.stringify(receipt)}\n`);
