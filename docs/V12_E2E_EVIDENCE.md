@@ -4,6 +4,8 @@ Verified on Studio Next, chain `61997`, against the user-owned IncidentGate V12 
 
 The deployed handshake is `IncidentGate`, version `12`, schema `autonomous-incident-gate-v12-atomic-sdk-v03`. The run ended with the explicit marker `LIVE_V12_COMPLETE`; finalized readback reported one atomic execution, three intents, three registered policy revisions, `paused=False`, and `target_revision=0`.
 
+The source returned by `gen_getContractCode` matches `contracts/incident_gate.py` in commit `72687c7` byte-for-byte after line-ending normalization. Both have SHA-256 `09a052003db7d928890bae52300fe62217c0e2d12e03f0f9caed995f3d95fd8a`.
+
 ## Coinbase complete lifecycle
 
 | Step | Finalized evidence | Result |
@@ -16,6 +18,8 @@ The deployed handshake is `IncidentGate`, version `12`, schema `autonomous-incid
 
 Final readback binds Coinbase, `PLATFORM_INTERNAL`, USDC, BUY, amount `1000`, the registered treasury agent, destination, nonce, calldata digest, operation digest, policy revision and expiry. The evidence and authorization digests are stored on-chain.
 
+Fresh readback also confirms the execution transaction is `FINALIZED`, `FINISHED_WITH_RETURN`, and `MAJORITY_AGREE`; the canonical receipt has the same operation digest as the intent, and `get_volume(PLATFORM_INTERNAL, USDC, BUY)` returns `1000`. The finalized fee record reports one leader time unit, six validator time units and no child-message fee.
+
 ## Kraken second audited adapter
 
 | Step | Finalized evidence | Result |
@@ -26,6 +30,8 @@ Final readback binds Coinbase, `PLATFORM_INTERNAL`, USDC, BUY, amount `1000`, th
 | Validator assessment | [`0xb2ea…100909`](https://explorer-studio-dev.genlayer.com/tx/0xb2ea18930ddc78ad21c68609d8730ac97e4db518345cfcbd28d8c9a653100909) | `DOES_NOT_AFFECT_OPERATION`, status `AUTHORIZED` |
 
 This is the second genuinely verified authority adapter, not a renamed Coinbase route. It has its own fixed URL, Statuspage subject identity, reviewed schema boundary and fail-closed assessment.
+
+Both assessment transactions finalized with `FINISHED_WITH_RETURN` and `MAJORITY_AGREE`. Each recorded three successful validator-mode `agree` executions from an initial set of five. The contract validator reruns the same `_fetch_feed(source)` path inside `validate`, compares the evidence digest, and requires agreement on verdict, matched incident IDs and material dimensions.
 
 ## Failure-first adversarial checks
 

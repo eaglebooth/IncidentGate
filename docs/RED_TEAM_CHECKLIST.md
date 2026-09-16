@@ -87,10 +87,10 @@ Target ratio: at least 70% adversarial/failure paths and at most 30% happy paths
 - [ ] Verify contract-to-contract call capability on the selected runner before building a vault.
 - [ ] Add a downstream consumer only after that primitive is verified.
 - [x] Deploy the reviewed V2 source to StudioNet and verify its version/schema readback.
-- [ ] Record deployment address and transaction.
+- [ ] Record deployment transaction hash (the V12 address and exact deployed-source hash are recorded).
 - [ ] Run Coinbase happy, blocked, source-failure and replay lifecycles.
 - [ ] Run Kraken blocked, source-failure and replay lifecycles (live happy authorization is verified; failure paths are locally covered).
-- [ ] Match repository commit, deployed byte/source identity and frontend address.
+- [x] Match repository commit, deployed byte/source identity and frontend address.
 - [ ] Run a ten-minute judge simulation by a reviewer unfamiliar with the project.
 
 ## Five judge questions

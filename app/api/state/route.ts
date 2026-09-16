@@ -20,7 +20,8 @@ export async function GET(request: Request) {
   try {
     const data = await client.readContract({ address: address as `0x${string}`, functionName: method, args: ["get_intent", "get_execution_receipt"].includes(method) ? [id] : [] });
     return Response.json({ success: true, data }, { headers: { "Cache-Control": "no-store" } });
-  } catch (error) {
-    return Response.json({ success: false, error: error instanceof Error ? error.message : "Studio Next read unavailable." }, { status: 503, headers: { "Cache-Control": "no-store", "Retry-After": "60" } });
+  } catch {
+    // RPC errors may contain validator/runtime internals. Never reflect them to browsers.
+    return Response.json({ success: false, error: "Studio Next read unavailable." }, { status: 503, headers: { "Cache-Control": "no-store", "Retry-After": "60" } });
   }
 }
