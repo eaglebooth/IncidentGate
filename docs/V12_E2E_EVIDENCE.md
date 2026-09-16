@@ -45,6 +45,33 @@ Both assessment transactions finalized with `FINISHED_WITH_RETURN` and `MAJORITY
 | Mutate authorization digest | [`0x69ba…f0f43`](https://explorer-studio-dev.genlayer.com/tx/0x69ba673e3f390f9fdec16ec650267caab803020bd88c0b0d02df1af3031f0f43) | Rollback `AUTHORIZATION_DIGEST_MISMATCH` |
 | Replay consumed authorization | [`0x5e9a…e1b69`](https://explorer-studio-dev.genlayer.com/tx/0x5e9a49ab5f9dd684645dc35b5133f20ce7fcbbba880ba5a1d9485ba56bbe1b69) | Rollback `AUTHORIZATION_NOT_ACTIVE` |
 
+## Live frontend wallet verification
+
+The production Control Room at [incidentgate.vercel.app](https://incidentgate.vercel.app/#console) was exercised with separate owner/assessor and treasury-agent wallets. These are finalized Studio Next transactions submitted through the live frontend, not direct-mode mocks. The two browser sessions used the same intent ID and independently converged on finalized on-chain state.
+
+### Complete frontend lifecycle
+
+| Frontend step | Finalized transaction | Result |
+| --- | --- | --- |
+| Owner registers `frontend-cb-001` | [`0x5284…5258`](https://explorer-studio-dev.genlayer.com/tx/0x52846af9d7008f24b0b12ea791c03165ed2d921226c2442a3dc495e30a725258) | Coinbase/internal/USDC/BUY policy committed with a distinct agent |
+| Agent creates `frontend-intent-001` | [`0xa9c6…8ae5`](https://explorer-studio-dev.genlayer.com/tx/0xa9c6a893a05764aab1ddcc8217d7a6e0dfc83fa4e71d6ebdeea39e8b15288ae5) | Exact amount, destination and nonce committed |
+| Agent schedules assessment | [`0xc4e4…7007`](https://explorer-studio-dev.genlayer.com/tx/0xc4e410dab7a0b31c8b35f273a2a5233a76671ee84b8fbdb8c83b4b885f1f7007) | Bounded assessment ticket committed |
+| Owner/assessor invokes GenLayer judgment | [`0x6d9e…0081`](https://explorer-studio-dev.genlayer.com/tx/0x6d9e1eb0c38f6cf4b9650bb44583085d8981204b4639197b678a244569760081) | `AUTHORIZED` |
+| Agent executes through the Gate | [`0x46a1…8aed`](https://explorer-studio-dev.genlayer.com/tx/0x46a18d6dd9461f99e528e8e243b4f5d4f3117018f1e8c2ad6440ab2de7478aed) | Finalized atomic consumption and receipt |
+
+### Frontend failure paths
+
+| Attempt submitted from the live frontend | Finalized transaction | Contract result |
+| --- | --- | --- |
+| Policy owner tries the agent-only create step | [`0x22b4…4b32`](https://explorer-studio-dev.genlayer.com/tx/0x22b4c23064aca411a54fc34e2dbe77a43ed447fa7373f23f6f512a4d4d2e4b32) | Rollback `AGENT_ONLY` |
+| Agent references a nonexistent policy | [`0x6497…5b20`](https://explorer-studio-dev.genlayer.com/tx/0x6497d4a2b396ef24224389f6ce7772aee23c62f15b72350134db41b69cc75b20) | Rollback `POLICY_NOT_FOUND` |
+| Agent requests `1,000,000,000,001` against the `1,000,000,000,000` policy limit | [`0xd139…375e`](https://explorer-studio-dev.genlayer.com/tx/0xd139fe1f1118e0878379de6eab9327642adbad2518bf19aabf07d9468fca375e) | Rollback `INTENT_OUTSIDE_POLICY` |
+| Agent reuses the finalized happy-path nonce | [`0x4e28…19a5`](https://explorer-studio-dev.genlayer.com/tx/0x4e284c9b5f3f20ac8f91d79c43c3021483db1d8b9eb16b2374836f5c4ad619a5) | Rollback `NONCE_ALREADY_USED` |
+| Agent attempts to overwrite `frontend-intent-001` | [`0xad26…a31e`](https://explorer-studio-dev.genlayer.com/tx/0xad2613ec6f1eea45fee5215e7f9b5de9c82e3c955928d112dd77841e9adaa31e) | Rollback `INVALID_OR_DUPLICATE_INTENT` |
+| Beneficiary agent tries to invoke assessor-only judgment | [`0xf9b6…1d59`](https://explorer-studio-dev.genlayer.com/tx/0xf9b6bb9e40444e3940696a5dc3c8d46e4400c5bc825bb077ae4c6e91cb2f1d59) | Rollback `ASSESSOR_ONLY` |
+
+Only transactions whose decoded input and finalized result matched the intended case are included. Abandoned fixtures and data-entry mistakes are intentionally excluded from the evidence set.
+
 ## Honest limits
 
 - V12 records a meaningful atomic authorization consequence, receipt and governed volume; it does not custody funds or claim to execute a real Coinbase/Kraken order.

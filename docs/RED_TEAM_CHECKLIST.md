@@ -77,6 +77,8 @@ Target ratio: at least 70% adversarial/failure paths and at most 30% happy paths
 - [x] Empty authenticated feed means only “no applicable disclosure found,” never general safety.
 - [x] Verify policy rotation race with finalized Studio Next transactions.
 - [x] Verify duplicate consumption with finalized Studio Next transactions.
+- [x] Verify wrong policy, over-limit amount, nonce replay and duplicate intent through the production frontend.
+- [x] Verify the beneficiary agent cannot invoke assessor-only judgment through the production frontend.
 
 ## Economic consequence and release evidence
 
@@ -90,6 +92,7 @@ Target ratio: at least 70% adversarial/failure paths and at most 30% happy paths
 - [ ] Run Coinbase happy, blocked, source-failure and replay lifecycles.
 - [ ] Run Kraken blocked, source-failure and replay lifecycles (live happy authorization is verified; failure paths are locally covered).
 - [x] Match repository commit, deployed byte/source identity and frontend address.
+- [x] Complete the owner/agent lifecycle through two production frontend wallet sessions.
 - [ ] Run a ten-minute judge simulation by a reviewer unfamiliar with the project.
 
 ## Five judge questions
