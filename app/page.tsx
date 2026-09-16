@@ -68,23 +68,42 @@ export default function Home() {
 
   useEffect(() => {
     let active = true;
+    let refreshing = false;
     let timer: ReturnType<typeof setTimeout>;
+    const schedule = (delay: number) => {
+      clearTimeout(timer);
+      timer = setTimeout(refresh, delay);
+    };
     const refresh = async () => {
-      if (document.hidden) { timer = setTimeout(refresh, 60000); return; }
+      if (!active) return;
+      if (document.hidden) { schedule(60000); return; }
+      if (refreshing) return;
+      refreshing = true;
       const sequence = ++readSequence.current;
       const [state, totals] = await Promise.all([readContract("get_intent", [intentId]), readContract("get_stats")]);
+      refreshing = false;
       if (!active) return;
-      if (sequence !== readSequence.current) { timer = setTimeout(refresh, 60000); return; }
+      if (sequence !== readSequence.current) { schedule(5000); return; }
       const value = state.success ? unwrap<IntentState>(state.data) : null;
       if (value && typeof value.exists === "boolean") {
         setIntent(value); setLoadedId(intentId); setReadError("");
         setLastRead(new Date().toLocaleTimeString());
       } else { setLoadedId(""); setReadError(state.error || "Unable to read intent state. Retrying…"); }
       if (totals.success) { const value = unwrap<Stats>(totals.data); if (value) setStats(value); }
-      timer = setTimeout(refresh, 60000);
+      schedule(5000);
+    };
+    const refreshOnReturn = () => {
+      if (!document.hidden) { clearTimeout(timer); void refresh(); }
     };
     void refresh();
-    return () => { active = false; clearTimeout(timer); };
+    window.addEventListener("focus", refreshOnReturn);
+    document.addEventListener("visibilitychange", refreshOnReturn);
+    return () => {
+      active = false;
+      clearTimeout(timer);
+      window.removeEventListener("focus", refreshOnReturn);
+      document.removeEventListener("visibilitychange", refreshOnReturn);
+    };
   }, [intentId]);
 
   const verifyDeployment = useCallback(async () => {
@@ -259,7 +278,7 @@ export default function Home() {
           </div>
           <aside className={`verdict ${authorized ? "allow" : blocked ? "deny" : "idle"}`}>
             <div className="card-label">AUTHORITATIVE READBACK</div>
-            <p>Intent: {intentId}<br/>{readError || (loadedId === intentId ? `Last read: ${lastRead} · refreshes every 60s; use Sync state after a transaction` : "Reading selected intent…")}</p>
+            <p>Intent: {intentId}<br/>{readError || (loadedId === intentId ? `Last read: ${lastRead} · refreshes every 5s and when this window regains focus` : "Reading selected intent…")}</p>
             <div className="verdict-mark">{authorized ? <Check/> : blocked ? <X/> : <ShieldAlert/>}</div>
             <span className="verdict-kicker">GATE AUTHORIZATION STATE</span>
             <h3>{status}</h3>
