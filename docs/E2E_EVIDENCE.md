@@ -1,6 +1,8 @@
 # IncidentGate V8 — end-to-end evidence
 
-This page is the shortest reproducible path through the user-deployed V8 release. All links point to finalized GenLayer StudioNet transactions. Historical deployments and the complete test ledger are preserved in [VERIFICATION.md](VERIFICATION.md).
+> **Historical evidence only.** V8 used the retired two-contract Gate/GuardedTarget architecture on StudioNet `61999`. It is not the current hackathon deployment and must not be presented as V12 behavior. Current evidence is in [V12_E2E_EVIDENCE.md](V12_E2E_EVIDENCE.md).
+
+This page preserves the reproducible path through the user-deployed V8 release. All links point to finalized GenLayer StudioNet transactions. Historical deployments and the complete test ledger are preserved in [VERIFICATION.md](VERIFICATION.md).
 
 ## Release under review
 

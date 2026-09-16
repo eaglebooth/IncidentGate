@@ -66,6 +66,8 @@ This catalog is a reviewed policy surface, not a claim that every listed operati
 
 V12 is intentionally a single contract. Its own address is bound into each operation digest. A successful `execute_intent` atomically consumes the authorization, stores a canonical receipt and increments the route volume. This is a meaningful on-chain consequence, but it is not custody and does not claim to execute an order at Coinbase or Kraken.
 
+`contracts/guarded_target.py`, `docs/E2E_EVIDENCE.md` and the V6–V8 sections of `docs/VERIFICATION.md` are retained only as historical migration evidence. They are not deployed, called or required by V12. The current release has no target-binding step and no cross-contract child-message dependency.
+
 ### Epistemic boundary
 
 An empty, successfully authenticated unresolved-incident feed means only that no blocking disclosure was found under this registered authority at retrieval time. It does **not** prove Coinbase or any protocol is safe, exploit-free, solvent, continuously available, or suitable for investment.
@@ -118,6 +120,7 @@ Copy `.env.example` to `.env.local` after deployment. The hackathon frontend is 
 - [V12 Studio Next deployment gate](docs/STUDIO_NEXT_DEPLOYMENT.md)
 - [Source manifest](docs/SOURCE_MANIFEST.md)
 - [Threat model](docs/THREAT_MODEL.md)
+- [V13 deferred hardening backlog](docs/V13_HARDENING_BACKLOG.md)
 - [Verification record](docs/VERIFICATION.md)
 - [Pre-submission red-team checklist](docs/RED_TEAM_CHECKLIST.md)
 - [Contract source](contracts/incident_gate.py)

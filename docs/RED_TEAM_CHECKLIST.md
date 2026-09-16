@@ -1,6 +1,6 @@
 # IncidentGate pre-submission red-team checklist
 
-Target ratio: at least 70% adversarial/failure paths and at most 30% happy paths. A checked item needs a reproducible test or finalized StudioNet transaction; prose is not evidence.
+Target ratio: at least 70% adversarial/failure paths and at most 30% happy paths. A checked item needs a reproducible test or finalized transaction on the named network; prose is not evidence. V12 evidence is Studio Next (`61997`). V6–V8 StudioNet (`61999`) evidence is historical only.
 
 ## GenLayer necessity and semantic boundary
 
@@ -22,7 +22,7 @@ Target ratio: at least 70% adversarial/failure paths and at most 30% happy paths
 - [x] Coinbase exact page ID and name are required.
 - [x] Kraken exact page ID and name are required.
 - [x] Cross-wiring Coinbase identity into Kraken fails closed.
-- [x] Redirect mismatch fails closed when the runtime exposes final URL.
+- [x] Do not claim redirect-destination verification: the pinned response API exposes no final URL/history.
 - [x] HTTP failure fails closed.
 - [x] Invalid UTF-8 fails closed in contract logic.
 - [x] HTML/non-JSON fails closed.
@@ -36,8 +36,8 @@ Target ratio: at least 70% adversarial/failure paths and at most 30% happy paths
 - [x] Retrieval time is recorded on-chain.
 - [x] Confirm the pinned SDK Response schema has no final URL or redirect history; do not claim redirect detection.
 - [x] Reject a raw 3xx response through the strict 2xx requirement.
-- [x] Record live Coinbase response digest on StudioNet.
-- [x] Record live Kraken response digest on StudioNet.
+- [x] Record live Coinbase response digest on Studio Next.
+- [x] Record live Kraken response digest on Studio Next.
 
 ## Model and consensus attacks
 
@@ -53,8 +53,8 @@ Target ratio: at least 70% adversarial/failure paths and at most 30% happy paths
 - [x] Validator refetches the authority independently.
 - [x] Validator compares evidence digest and consequential fields.
 - [x] Forced validator disagreement yields no authorization.
-- [ ] Exercise genuine multi-validator disagreement on StudioNet.
-- [ ] Exercise live model timeout/retry behavior on StudioNet.
+- [ ] Exercise genuine multi-validator disagreement on Studio Next.
+- [ ] Exercise live model timeout/retry behavior on Studio Next.
 
 ## State and authorization attacks
 
@@ -75,8 +75,8 @@ Target ratio: at least 70% adversarial/failure paths and at most 30% happy paths
 - [x] Wrong caller cannot consume authorization.
 - [x] Capability can be consumed only once.
 - [x] Empty authenticated feed means only “no applicable disclosure found,” never general safety.
-- [x] Verify policy rotation race with finalized StudioNet transactions.
-- [x] Verify duplicate consumption with finalized StudioNet transactions.
+- [x] Verify policy rotation race with finalized Studio Next transactions.
+- [x] Verify duplicate consumption with finalized Studio Next transactions.
 
 ## Economic consequence and release evidence
 
@@ -84,9 +84,8 @@ Target ratio: at least 70% adversarial/failure paths and at most 30% happy paths
 - [x] No claim says IncidentGate pauses Coinbase or Kraken.
 - [x] No claim says the current contract custodies or transfers funds.
 - [x] Capability consumption creates a finalized on-chain state consequence.
-- [ ] Verify contract-to-contract call capability on the selected runner before building a vault.
-- [ ] Add a downstream consumer only after that primitive is verified.
-- [x] Deploy the reviewed V2 source to StudioNet and verify its version/schema readback.
+- [x] V12 deliberately removes the historical cross-contract child-message boundary and documents the single-contract atomic consequence.
+- [x] Deploy the reviewed V12 source to Studio Next and verify its version/schema readback.
 - [ ] Record deployment transaction hash (the V12 address and exact deployed-source hash are recorded).
 - [ ] Run Coinbase happy, blocked, source-failure and replay lifecycles.
 - [ ] Run Kraken blocked, source-failure and replay lifecycles (live happy authorization is verified; failure paths are locally covered).
@@ -100,3 +99,12 @@ Target ratio: at least 70% adversarial/failure paths and at most 30% happy paths
 3. What does AI decide? Only `AFFECTS_OPERATION`, `DOES_NOT_AFFECT_OPERATION`, or `UNCERTAIN` plus bounded material facts.
 4. What happens when uncertain? Deterministic code blocks and emits no capability.
 5. What happens on-chain? A short-lived, exact, single-use capability is issued and its consumption is finalized; downstream value transfer is not claimed in this version.
+
+## Deferred, not claimed for V12
+
+- [ ] Reject overlong incident names/bodies rather than projecting bounded prefixes.
+- [ ] Include `reason` in validator equality or derive it deterministically.
+- [ ] Namespace policy IDs by owner and intent IDs by agent.
+- [ ] Add per-policy active-intent and cumulative-value limits.
+- [ ] Add ownership transfer plus multisig/timelocked production administration.
+- [ ] Integrate an external executor only when it cannot bypass the Gate receipt.

@@ -1,5 +1,7 @@
 # Verification record
 
+> **Historical ledger.** Sections V1–V11 preserve migration and negative evidence, including the retired two-contract `GuardedTarget` experiments. They do not describe the current V12 Studio Next architecture. Use [V12_E2E_EVIDENCE.md](V12_E2E_EVIDENCE.md) for judge-facing current evidence.
+
 ## Local contract checks
 
 Run:

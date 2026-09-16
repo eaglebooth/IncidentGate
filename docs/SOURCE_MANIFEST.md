@@ -34,7 +34,7 @@ The feed is intentionally mutable because the product asks a current point-in-ti
 
 Kraken was selected because its official public API documents the unresolved lifecycle and its real incident disclosures contain asset, network and deposit/withdrawal scope. Its URL and subject identity are validated independently.
 
-**V8 release position:** Coinbase is the complete first adapter; Kraken is the second audited adapter demonstrating extensibility. Both fixed official sources completed live StudioNet assessment on the user-deployed V8 release. No arbitrary source registry is exposed.
+**V12 release position:** Coinbase is the complete first adapter; Kraken is the second audited adapter demonstrating extensibility. Both fixed official sources completed live assessment on the user-owned Studio Next V12 release. No arbitrary source registry is exposed. V8 evidence remains historical and must not be used as the current deployment claim.
 
 ## Source feasibility decision
 
